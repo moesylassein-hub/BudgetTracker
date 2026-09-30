@@ -1,0 +1,48 @@
+name: Restore recovered Flutter project
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.restore/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify recovered archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .restore/READY
+          cat \
+            .restore/part_00 \
+            .restore/part_01 .restore/part_01b \
+            .restore/part_02 \
+            .restore/part_03 \
+            .restore/part_04 .restore/part_04b1 \
+            .restore/part_04c0 .restore/part_04c1 .restore/part_04c2 \
+            .restore/part_05 \
+            | tr -d '\r\n' | base64 -d > /tmp/restored_source.zip
+          echo "33a04fd7aa24494dadb7fd659d5198025fd1fbd9f18610daf5972d05d77e105c  /tmp/restored_source.zip" | sha256sum -c -
+          unzip -t /tmp/restored_source.zip
+          unzip -o /tmp/restored_source.zip -d .
+
+      - name: Commit restored source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .restore .recovery
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restore complete Flutter project from recovered source"
+          git push
