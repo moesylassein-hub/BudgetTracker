@@ -1,0 +1,280 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart' hide Transaction;
+
+import '../models/budget_category.dart';
+import '../models/savings_goal.dart';
+import '../models/transaction.dart';
+
+class LocalStorageService {
+  static const _databaseName = 'budget_tracker.db';
+  static const _databaseVersion = 2;
+  static const _transactionsTable = 'transactions';
+
+  static const _legacyTransactionsKey = 'transactions_v2';
+  static const _budgetKey = 'monthly_budget_v2';
+  static const _themeKey = 'theme_mode_v1';
+  static const _currencyKey = 'currency_code_v1';
+  static const _categoriesKey = 'categories_v1';
+  static const _goalsKey = 'savings_goals_v1';
+  static const _alertsEnabledKey = 'budget_alerts_enabled_v1';
+  static const _alertStatePrefix = 'budget_alert_state_';
+
+  Database? _database;
+
+  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
+
+  Future<Database> get _db async {
+    if (_database != null) return _database!;
+    final basePath = await getDatabasesPath();
+    final database = await openDatabase(
+      '$basePath/$_databaseName',
+      version: _databaseVersion,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE $_transactionsTable (
+            id TEXT PRIMARY KEY,
+            store TEXT NOT NULL,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            date TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            type TEXT NOT NULL DEFAULT 'expense'
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX idx_transactions_date ON $_transactionsTable(date DESC)',
+        );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            "ALTER TABLE $_transactionsTable ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
+          );
+        }
+      },
+    );
+    _database = database;
+    await _migrateLegacyTransactionsIfNeeded(database);
+    return database;
+  }
+
+  Future<List<Transaction>> loadTransactions() async {
+    final db = await _db;
+    final rows = await db.query(_transactionsTable, orderBy: 'date DESC');
+    return rows.map(_transactionFromRow).toList();
+  }
+
+  Future<void> insertTransaction(Transaction transaction) async {
+    final db = await _db;
+    await db.insert(
+      _transactionsTable,
+      _transactionToRow(transaction),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> updateTransaction(Transaction transaction) async {
+    final db = await _db;
+    await db.update(
+      _transactionsTable,
+      _transactionToRow(transaction),
+      where: 'id = ?',
+      whereArgs: [transaction.id],
+    );
+  }
+
+  Future<void> renameTransactionCategory(String oldName, String newName) async {
+    final db = await _db;
+    await db.update(
+      _transactionsTable,
+      {'category': newName},
+      where: 'category = ?',
+      whereArgs: [oldName],
+    );
+  }
+
+  Future<void> deleteTransaction(String id) async {
+    final db = await _db;
+    await db.delete(_transactionsTable, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> clearTransactions() async {
+    final db = await _db;
+    await db.delete(_transactionsTable);
+  }
+
+  Future<double> loadBudget() async {
+    final prefs = await _prefs;
+    return prefs.getDouble(_budgetKey) ?? 10000;
+  }
+
+  Future<void> saveBudget(double value) async {
+    final prefs = await _prefs;
+    await prefs.setDouble(_budgetKey, value);
+  }
+
+  Future<ThemeMode> loadThemeMode() async {
+    final prefs = await _prefs;
+    return switch (prefs.getString(_themeKey)) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
+  }
+
+  Future<void> saveThemeMode(ThemeMode mode) async {
+    final prefs = await _prefs;
+    await prefs.setString(_themeKey, mode.name);
+  }
+
+  Future<String> loadCurrencyCode() async {
+    final prefs = await _prefs;
+    return prefs.getString(_currencyKey) ?? 'EGP';
+  }
+
+  Future<void> saveCurrencyCode(String code) async {
+    final prefs = await _prefs;
+    await prefs.setString(_currencyKey, code);
+  }
+
+  Future<List<BudgetCategory>> loadCategories() async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_categoriesKey);
+    if (raw == null || raw.isEmpty) return BudgetCategory.defaults;
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final categories = decoded
+          .map((item) => BudgetCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+      return categories.isEmpty ? BudgetCategory.defaults : categories;
+    } catch (_) {
+      return BudgetCategory.defaults;
+    }
+  }
+
+  Future<void> saveCategories(List<BudgetCategory> categories) async {
+    final prefs = await _prefs;
+    await prefs.setString(
+      _categoriesKey,
+      jsonEncode(categories.map((item) => item.toJson()).toList()),
+    );
+  }
+
+  Future<List<SavingsGoal>> loadGoals() async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_goalsKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((item) => SavingsGoal.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveGoals(List<SavingsGoal> goals) async {
+    final prefs = await _prefs;
+    await prefs.setString(
+      _goalsKey,
+      jsonEncode(goals.map((item) => item.toJson()).toList()),
+    );
+  }
+
+  Future<bool> loadBudgetAlertsEnabled() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_alertsEnabledKey) ?? false;
+  }
+
+  Future<void> saveBudgetAlertsEnabled(bool value) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_alertsEnabledKey, value);
+  }
+
+  Future<Map<String, dynamic>> loadBudgetAlertState(String monthKey) async {
+    final prefs = await _prefs;
+    final raw = prefs.getString('$_alertStatePrefix$monthKey');
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> saveBudgetAlertState(
+    String monthKey,
+    Map<String, dynamic> state,
+  ) async {
+    final prefs = await _prefs;
+    await prefs.setString('$_alertStatePrefix$monthKey', jsonEncode(state));
+  }
+
+  Future<void> clearFinancialData() async {
+    await clearTransactions();
+    final prefs = await _prefs;
+    await prefs.remove(_budgetKey);
+    await prefs.remove(_currencyKey);
+    await prefs.remove(_categoriesKey);
+    await prefs.remove(_goalsKey);
+    await prefs.remove(_alertsEnabledKey);
+    for (final key in prefs.getKeys().where((key) => key.startsWith(_alertStatePrefix))) {
+      await prefs.remove(key);
+    }
+  }
+
+  Map<String, Object?> _transactionToRow(Transaction transaction) => {
+        'id': transaction.id,
+        'store': transaction.store,
+        'amount': transaction.amount,
+        'category': transaction.category,
+        'date': transaction.date.toIso8601String(),
+        'note': transaction.note,
+        'type': transaction.type.name,
+      };
+
+  Transaction _transactionFromRow(Map<String, Object?> row) {
+    return Transaction(
+      id: row['id']! as String,
+      store: row['store']! as String,
+      amount: (row['amount']! as num).toDouble(),
+      category: row['category']! as String,
+      date: DateTime.parse(row['date']! as String),
+      note: (row['note'] as String?) ?? '',
+      type: TransactionType.fromName(row['type'] as String?),
+    );
+  }
+
+  Future<void> _migrateLegacyTransactionsIfNeeded(Database db) async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_legacyTransactionsKey);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final existingCount = Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM $_transactionsTable'),
+          ) ??
+          0;
+      if (existingCount == 0) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        final batch = db.batch();
+        for (final item in decoded) {
+          final transaction = Transaction.fromJson(item as Map<String, dynamic>);
+          batch.insert(
+            _transactionsTable,
+            _transactionToRow(transaction),
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+        await batch.commit(noResult: true);
+      }
+      await prefs.remove(_legacyTransactionsKey);
+    } catch (_) {
+      // Leave legacy data untouched if migration fails so it is not lost.
+    }
+  }
+}

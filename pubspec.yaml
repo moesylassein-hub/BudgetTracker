@@ -1,0 +1,28 @@
+name: budget_tracker
+description: A private, on-device budget tracker with receipt OCR and spending insights.
+publish_to: "none"
+version: 1.1.0+2
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fl_chart: ^1.2.0
+  google_mlkit_text_recognition: ^0.17.1
+  image_picker: ^1.2.3
+  flutter_local_notifications: ^22.3.0
+  quick_actions: ^1.1.0
+  intl: ^0.20.3
+  shared_preferences: ^2.5.5
+  sqflite: ^2.4.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

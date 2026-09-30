@@ -1,0 +1,14 @@
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/launcher_background</item>
+        <item name="android:statusBarColor">#0F766E</item>
+        <item name="android:navigationBarColor">#0E1413</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">#0E1413</item>
+        <item name="android:navigationBarColor">#0E1413</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+</resources>
