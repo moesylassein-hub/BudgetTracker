@@ -57,13 +57,23 @@ class SettingsScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
             ),
-            ...AppCurrencies.values.map(
-              (currency) => RadioListTile<String>(
-                value: currency.code,
-                groupValue: controller.currencyCode,
-                title: Text('${currency.code} • ${currency.name}'),
-                subtitle: Text('Example: ${AppFormatters.money(1234.56, currencyCode: currency.code)}'),
-                onChanged: (value) => Navigator.pop(sheetContext, value),
+            RadioGroup<String>(
+              groupValue: controller.currencyCode,
+              onChanged: (value) {
+                if (value != null) Navigator.pop(sheetContext, value);
+              },
+              child: Column(
+                children: [
+                  ...AppCurrencies.values.map(
+                    (currency) => RadioListTile<String>(
+                      value: currency.code,
+                      title: Text('${currency.code} • ${currency.name}'),
+                      subtitle: Text(
+                        'Example: ${AppFormatters.money(1234.56, currencyCode: currency.code)}',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const Padding(
