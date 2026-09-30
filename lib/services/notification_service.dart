@@ -36,7 +36,7 @@ class NotificationService {
     required String category,
     required double spent,
     required double budget,
-    required int currencyCode,
+    required String currencyCode,
   }) async {
     await _show(
       '$category budget exceeded',
