@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../models/receipt_scan_result.dart';
 
 class ReceiptParser {
@@ -212,21 +210,62 @@ class ReceiptParser {
       }
     }
 
-    final formats = [
-      DateFormat('d MMM yyyy', 'en'),
-      DateFormat('dd MMM yyyy', 'en'),
-      DateFormat('MMM d yyyy', 'en'),
-      DateFormat('MMM dd yyyy', 'en'),
-    ];
+    const months = <String, int>{
+      'jan': 1,
+      'feb': 2,
+      'mar': 3,
+      'apr': 4,
+      'may': 5,
+      'jun': 6,
+      'jul': 7,
+      'aug': 8,
+      'sep': 9,
+      'oct': 10,
+      'nov': 11,
+      'dec': 12,
+    };
+    final dayFirst = RegExp(
+      r'\\b(\\d{1,2})\\s+([A-Za-z]{3,9})\\s+(\\d{4})\\b',
+      caseSensitive: false,
+    );
+    final monthFirst = RegExp(
+      r'\\b([A-Za-z]{3,9})\\s+(\\d{1,2})(?:,)?\\s+(\\d{4})\\b',
+      caseSensitive: false,
+    );
+
     for (final line in lines) {
-      final cleaned = line.replaceAll(RegExp(r'[,]+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-      for (final format in formats) {
-        try {
-          final parsed = format.parseStrict(cleaned);
-          if (parsed.year >= 2000 && parsed.year <= DateTime.now().year + 1) return parsed;
-        } catch (_) {
-          // Try the next common date format.
+      final cleaned = line.replaceAll(RegExp(r'\\s+'), ' ').trim();
+      final dayFirstMatch = dayFirst.firstMatch(cleaned);
+      final monthFirstMatch = monthFirst.firstMatch(cleaned);
+
+      try {
+        late int year;
+        late int month;
+        late int day;
+
+        if (dayFirstMatch != null) {
+          day = int.parse(dayFirstMatch.group(1)!);
+          month = months[dayFirstMatch.group(2)!.substring(0, 3).toLowerCase()] ?? 0;
+          year = int.parse(dayFirstMatch.group(3)!);
+        } else if (monthFirstMatch != null) {
+          month = months[monthFirstMatch.group(1)!.substring(0, 3).toLowerCase()] ?? 0;
+          day = int.parse(monthFirstMatch.group(2)!);
+          year = int.parse(monthFirstMatch.group(3)!);
+        } else {
+          continue;
         }
+
+        final parsed = DateTime(year, month, day);
+        if (month != 0 &&
+            parsed.year == year &&
+            parsed.month == month &&
+            parsed.day == day &&
+            parsed.year >= 2000 &&
+            parsed.year <= DateTime.now().year + 1) {
+          return parsed;
+        }
+      } catch (_) {
+        // Try the next line.
       }
     }
     return null;
