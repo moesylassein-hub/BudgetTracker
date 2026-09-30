@@ -126,7 +126,7 @@ class ReceiptParser {
 
   String? _receiptNumber(List<String> lines) {
     final pattern = RegExp(
-      r'(?:receipt|invoice|transaction|trx)\s*(?:no|number|#|:)\.?\s*([A-Z0-9\-]{3,24})',
+      r'(?:receipt|invoice|transaction|trx)\s*(?:(?:no|number)\.?\s*[:#]?|[#:])\s*([A-Z0-9\-]{3,24})',
       caseSensitive: false,
     );
     for (final line in lines.take(20)) {
