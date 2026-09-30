@@ -93,11 +93,7 @@ class SettingsScreen extends StatelessWidget {
   Future<void> _toggleAlerts(BuildContext context, bool value) async {
     final enabled = await controller.setBudgetAlertsEnabled(value);
     if (!context.mounted) return;
-    if (value && !enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notification permission was not granted, so budget alerts remain off.')),
-      );
-    } else if (value) {
+    if (value && enabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Budget alerts enabled at 50%, 80%, 100%, plus category limits.')),
       );
@@ -273,7 +269,7 @@ class SettingsScreen extends StatelessWidget {
                 contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                 leading: _SettingsIcon(Icons.info_outline_rounded),
                 title: Text('Budget Tracker', style: TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text('Version 1.1.0 • Built for Android'),
+                subtitle: Text('Version 1.0.0 • Built for Android'),
               ),
             ),
           ],
