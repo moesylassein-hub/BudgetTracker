@@ -64,16 +64,9 @@ class DashboardScreen extends StatelessWidget {
           budget: budget,
           spent: spent,
           currencyCode: controller.currencyCode,
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Text(
-            'Budget cycle: ${AppFormatters.dateRange(controller.currentCycleStart, controller.currentCycleEndExclusive.subtract(const Duration(days: 1)))}',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+          periodLabel: AppFormatters.dateRange(
+            controller.currentCycleStart,
+            controller.currentCycleEndExclusive.subtract(const Duration(days: 1)),
           ),
         ),
         const SizedBox(height: 16),
