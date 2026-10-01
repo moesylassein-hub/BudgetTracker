@@ -102,6 +102,25 @@ Settings → **Recurring transactions** can automate regular income and expenses
 
 Budget cycles can start on any day from 1 to 31. If salary arrives on the 25th, set **Settings → Budget cycle → Day 25**; a cycle such as September 25–October 24 is then used consistently for the dashboard, budget limits, alerts, statistics, comparisons, and category budgets. For start days 29–31, shorter months automatically use that month's final valid day.
 
+## Importing from Money Tracker / other apps
+
+Settings → **Import data → Import CSV or Excel** opens a migration wizard for transaction history.
+
+The importer is specifically compatible with the documented export/import conventions of **Money Tracker by Paraga Mobile** (`io.paraga.moneytracker`):
+
+- CSV and XLSX files
+- `Date`, `Category`, and `Remark`/description columns
+- one signed `Amount` / `Amount(Auto)` column (positive income, negative expense)
+- or split `Amount(Income)` / `Amount(Expense)` columns
+- Money Tracker's documented numeric and month-name date formats
+- Wallet, currency, and label metadata are preserved in the imported transaction note when those columns exist
+- transfer rows are skipped because Budget Tracker currently models income/expense, not wallet-to-wallet transfers
+- duplicate rows are detected before import
+- unknown categories are created automatically
+- the user sees a preview and can correct column mapping before anything is saved
+
+If a Money Tracker export contains multiple currencies, Budget Tracker warns before import. Amounts are not exchange-rate converted; source wallet/currency metadata is preserved in the note.
+
 ## Excel and CSV export
 
 Settings → **Export data** provides two human-readable exports:
