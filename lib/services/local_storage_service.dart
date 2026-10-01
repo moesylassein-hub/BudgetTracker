@@ -11,7 +11,7 @@ import '../models/transaction.dart';
 
 class LocalStorageService {
   static const _databaseName = 'budget_tracker.db';
-  static const _databaseVersion = 2;
+  static const _databaseVersion = 3;
   static const _transactionsTable = 'transactions';
 
   static const _legacyTransactionsKey = 'transactions_v2';
@@ -47,6 +47,9 @@ class LocalStorageService {
             category TEXT NOT NULL,
             date TEXT NOT NULL,
             note TEXT NOT NULL DEFAULT '',
+            ledger TEXT NOT NULL DEFAULT '',
+            account TEXT NOT NULL DEFAULT '',
+            currency_code TEXT NOT NULL DEFAULT '',
             type TEXT NOT NULL DEFAULT 'expense'
           )
         ''');
@@ -58,6 +61,17 @@ class LocalStorageService {
         if (oldVersion < 2) {
           await db.execute(
             "ALTER TABLE $_transactionsTable ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
+          );
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            "ALTER TABLE $_transactionsTable ADD COLUMN ledger TEXT NOT NULL DEFAULT ''",
+          );
+          await db.execute(
+            "ALTER TABLE $_transactionsTable ADD COLUMN account TEXT NOT NULL DEFAULT ''",
+          );
+          await db.execute(
+            "ALTER TABLE $_transactionsTable ADD COLUMN currency_code TEXT NOT NULL DEFAULT ''",
           );
         }
       },
@@ -393,6 +407,9 @@ class LocalStorageService {
         'category': transaction.category,
         'date': transaction.date.toIso8601String(),
         'note': transaction.note,
+        'ledger': transaction.ledger,
+        'account': transaction.account,
+        'currency_code': transaction.currencyCode,
         'type': transaction.type.name,
       };
 
@@ -404,6 +421,9 @@ class LocalStorageService {
       category: row['category']! as String,
       date: DateTime.parse(row['date']! as String),
       note: (row['note'] as String?) ?? '',
+      ledger: (row['ledger'] as String?) ?? '',
+      account: (row['account'] as String?) ?? '',
+      currencyCode: (row['currency_code'] as String?) ?? '',
       type: TransactionType.fromName(row['type'] as String?),
     );
   }
