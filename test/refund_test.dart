@@ -34,6 +34,12 @@ class MemoryStorage extends LocalStorageService {
   }
 }
 
+num numericCell(CellValue? cell) => switch (cell) {
+  IntCellValue cell => cell.value,
+  DoubleCellValue cell => cell.value,
+  _ => throw StateError('Expected a numeric spreadsheet cell'),
+};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -139,9 +145,9 @@ void main() {
         expect(utf8.decode(bytes), contains('-800.00'));
       } else {
         final summary = Excel.decodeBytes(bytes)['Summary'].rows;
-        expect(summary[4][1]!.value, DoubleCellValue(2000));
-        expect(summary[5][1]!.value, DoubleCellValue(200));
-        expect(summary[6][1]!.value, DoubleCellValue(1800));
+        expect(numericCell(summary[4][1]!.value), 2000);
+        expect(numericCell(summary[5][1]!.value), 200);
+        expect(numericCell(summary[6][1]!.value), 1800);
       }
       const importer = ImportService();
       final table = importer.readFile(
