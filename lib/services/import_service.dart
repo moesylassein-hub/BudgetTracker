@@ -327,24 +327,20 @@ class ImportService {
         final note = _cell(row, mapping.note).trim();
         if (note.isNotEmpty && note != description) noteParts.add(note);
 
-        final ledger = _cell(row, mapping.ledger).trim();
-        if (ledger.isNotEmpty) noteParts.add('Ledger: ' + ledger);
-
-        final account = _cell(row, mapping.account).trim();
-        if (account.isNotEmpty) noteParts.add('Account: ' + account);
-
-        if (subCategoryText.isNotEmpty &&
-            subCategoryText.toLowerCase() != category.toLowerCase()) {
-          noteParts.add('Sub-category: ' + subCategoryText);
+        // Keep imported sub-category information in the normal Note field.
+        if (subCategoryText.isNotEmpty) {
+          noteParts.add(subCategoryText);
         }
 
+        final ledger = _cell(row, mapping.ledger).trim();
         final wallet = _cell(row, mapping.wallet).trim();
-        if (wallet.isNotEmpty) noteParts.add('Wallet: ' + wallet);
+        final resolvedLedger = ledger.isNotEmpty ? ledger : wallet;
 
-        final currency = _cell(row, mapping.currency).trim();
+        final account = _cell(row, mapping.account).trim();
+
+        final currency = _cell(row, mapping.currency).trim().toUpperCase();
         if (currency.isNotEmpty) {
-          sourceCurrencies.add(currency.toUpperCase());
-          noteParts.add('Currency: ' + currency);
+          sourceCurrencies.add(currency);
         }
 
         final labels = _cell(row, mapping.labels).trim();
@@ -360,6 +356,9 @@ class ImportService {
           category: category,
           date: parsedDate,
           note: noteParts.join(' • '),
+          ledger: resolvedLedger,
+          account: account,
+          currencyCode: currency,
           type: amountAndType.type,
         );
 
