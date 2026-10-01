@@ -428,7 +428,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 key: ValueKey(
-                  `ledger-$_ledger-${_ledgerOptions.length}`,
+                  'ledger-$_ledger-${_ledgerOptions.length}',
                 ),
                 initialValue: _ledger,
                 isExpanded: true,
@@ -466,7 +466,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 key: ValueKey(
-                  `account-$_account-${_accountOptions.length}`,
+                  'account-$_account-${_accountOptions.length}',
                 ),
                 initialValue: _account,
                 isExpanded: true,
