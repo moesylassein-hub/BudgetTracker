@@ -577,6 +577,19 @@ class _RecurringTransactionEditorState
     setState(() => _saving = true);
     try {
       final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final scheduleChanged = existing != null &&
+          (existing!.frequency != _frequency ||
+              existing!.dayOfMonth != _dayOfMonth ||
+              existing!.weekday != _weekday ||
+              !_sameDate(existing!.startDate, _startDate) ||
+              !_sameNullableDate(existing!.endDate, _endDate));
+      final resumed =
+          existing != null && !existing!.isActive && _isActive;
+      final lastGeneratedOn = resumed || scheduleChanged
+          ? today
+          : existing?.lastGeneratedOn;
+
       final recurring = RecurringTransaction(
         id: existing?.id ?? now.microsecondsSinceEpoch.toString(),
         title: _titleController.text.trim(),
@@ -590,9 +603,7 @@ class _RecurringTransactionEditorState
         weekday: _weekday,
         note: _noteController.text.trim(),
         isActive: _isActive,
-        lastGeneratedOn: existing != null && !existing!.isActive && _isActive
-            ? DateTime(now.year, now.month, now.day)
-            : existing?.lastGeneratedOn,
+        lastGeneratedOn: lastGeneratedOn,
         createdAt: existing?.createdAt ?? now,
       );
 
@@ -832,6 +843,17 @@ class _RecurringTransactionEditorState
                 onChanged: (value) {
                   setState(() => _syncBudgetCycle = value);
                 },
+              ),
+            ],
+            if (existing != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Changes apply to future automatic entries. Existing Activity transactions are not rewritten.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
               ),
             ],
             const SizedBox(height: 22),
