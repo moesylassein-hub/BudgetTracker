@@ -109,7 +109,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 ButtonSegment(
                   value: ReportSection.categories,
-                  icon: Icon(Icons.donut_large_rounded),
+                  icon: Icon(Icons.leaderboard_rounded),
                   label: Text('Categories'),
                 ),
               ],
