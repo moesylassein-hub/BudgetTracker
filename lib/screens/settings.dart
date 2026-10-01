@@ -16,7 +16,7 @@ class SettingsScreen extends StatelessWidget {
     final value = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Monthly budget'),
+        title: const Text('Budget per cycle'),
         content: TextFormField(
           initialValue: budgetText,
           autofocus: true,
