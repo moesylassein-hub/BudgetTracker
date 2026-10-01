@@ -36,7 +36,7 @@ enum BackupFrequency {
           DateTime(
             last.year,
             last.month + 1,
-            last.day.clamp(1, 28),
+            last.day.clamp(1, 28).toInt(),
             last.hour,
             last.minute,
           ),
