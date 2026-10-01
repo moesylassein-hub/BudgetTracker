@@ -340,11 +340,22 @@ class _CategoriesReport extends StatelessWidget {
             title: 'No category data yet',
             text: 'Add expenses to unlock your spending breakdown.',
           )
-        else
+        else if (totals.values.any((amount) => amount > 0))
           _EnhancedCategoryDonutCard(
             controller: controller,
             analysis: analysis,
           ),
+        if (totals.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('Net category spending. Chart shares use positive category totals.'),
+          ),
+          for (final entry in totals.entries.where((entry) => entry.value <= 0))
+            ListTile(
+              title: Text(entry.key),
+              trailing: Text(AppFormatters.money(entry.value, currencyCode: controller.currencyCode)),
+            ),
+        ],
         const SizedBox(height: 22),
         _SectionTitle(
           title: 'Category limits',
@@ -383,7 +394,7 @@ class _EnhancedCategoryDonutCardState
     final controller = widget.controller;
     final analysis = widget.analysis;
     final scheme = Theme.of(context).colorScheme;
-    final all = analysis.categoryTotals.entries.toList();
+    final all = analysis.categoryTotals.entries.where((entry) => entry.value > 0).toList();
 
     final slices = <_CategorySlice>[
       for (final entry in all.take(5))
@@ -397,7 +408,7 @@ class _EnhancedCategoryDonutCardState
       slices.add(_CategorySlice('Other', otherTotal));
     }
 
-    final total = analysis.snapshot.spent;
+    final total = all.fold<double>(0, (sum, entry) => sum + entry.value);
     final selected =
         _touchedIndex >= 0 && _touchedIndex < slices.length
             ? slices[_touchedIndex]
@@ -470,7 +481,7 @@ class _EnhancedCategoryDonutCardState
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          selected?.name ?? 'Total spent',
+                          selected?.name ?? 'Positive categories',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: scheme.onSurfaceVariant,
@@ -494,7 +505,7 @@ class _EnhancedCategoryDonutCardState
                           Text(
                             _slicePercent(selected.amount, total)
                                     .toStringAsFixed(1) +
-                                '% of expenses',
+                                '% of positive categories',
                             style: TextStyle(
                               color: scheme.onSurfaceVariant,
                               fontSize: 10,
@@ -1007,6 +1018,7 @@ class _SpendingTimelineCard extends StatelessWidget {
       (max, spot) => math.max(max, spot.y).toDouble(),
     );
     final maxY = math.max(math.max(maxSpend, budget), 1.0).toDouble() * 1.15;
+    final minY = spots.fold<double>(0, (min, spot) => math.min(min, spot.y).toDouble()) * 1.15;
     final days = analysis.snapshot.totalDays;
 
     return Card(
@@ -1020,7 +1032,7 @@ class _SpendingTimelineCard extends StatelessWidget {
                 LineChartData(
                   minX: 1,
                   maxX: math.max(days.toDouble(), 2.0).toDouble(),
-                  minY: 0,
+                  minY: minY,
                   maxY: maxY,
                   gridData: FlGridData(
                     drawVerticalLine: false,
@@ -1245,6 +1257,7 @@ class _CashFlowChart extends StatelessWidget {
       ).toDouble(),
     );
     final maxY = math.max(maxValue, 1.0).toDouble() * 1.2;
+    final minY = history.fold<double>(0, (min, item) => math.min(min, item.spent).toDouble()) * 1.2;
 
     return Card(
       child: Padding(
@@ -1255,7 +1268,7 @@ class _CashFlowChart extends StatelessWidget {
               height: 250,
               child: BarChart(
                 BarChartData(
-                  minY: 0,
+                  minY: minY,
                   maxY: maxY,
                   alignment: BarChartAlignment.spaceAround,
                   barTouchData: BarTouchData(
@@ -1688,7 +1701,7 @@ class _ReportAnalysis {
   }
 
   double get previousThreeAverage {
-    final withData = previousThree.where((item) => item.spent > 0).toList();
+    final withData = previousThree.where((item) => item.transactions.isNotEmpty).toList();
     if (withData.isEmpty) return 0;
     return withData.fold<double>(0, (sum, item) => sum + item.spent) /
         withData.length;
@@ -1712,12 +1725,13 @@ class _ReportAnalysis {
 
   MapEntry<String, double>? get topCategory {
     final totals = categoryTotals;
-    return totals.isEmpty ? null : totals.entries.first;
+    return totals.isEmpty || totals.entries.first.value <= 0 ? null : totals.entries.first;
   }
 
   Transaction? get biggestExpense {
-    if (snapshot.expenses.isEmpty) return null;
-    return snapshot.expenses.reduce(
+    final purchases = snapshot.expenses.where((item) => item.amount > 0).toList();
+    if (purchases.isEmpty) return null;
+    return purchases.reduce(
       (a, b) => a.amount >= b.amount ? a : b,
     );
   }
@@ -1731,7 +1745,7 @@ class _ReportAnalysis {
     }
     final entries = totals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    return _BiggestDay(entries.first.key, entries.first.value);
+    return entries.first.value <= 0 ? null : _BiggestDay(entries.first.key, entries.first.value);
   }
 
   List<FlSpot> get cumulativeSpending {
@@ -1809,8 +1823,9 @@ class _ReportAnalysis {
     }
 
     final category = topCategory;
-    if (category != null && snapshot.spent > 0) {
-      final share = category.value / snapshot.spent * 100;
+    if (category != null) {
+      final positiveTotal = categoryTotals.values.where((amount) => amount > 0).fold<double>(0, (sum, amount) => sum + amount);
+      final share = category.value / positiveTotal * 100;
       result.add(
         _Insight(
           AppCategories.iconFor(
@@ -1821,7 +1836,7 @@ class _ReportAnalysis {
           category.key +
               ' represents ' +
               share.round().toString() +
-              '% of expenses this cycle.',
+              '% of positive net category spending this cycle.',
           share >= 45 ? _InsightTone.warning : _InsightTone.neutral,
         ),
       );

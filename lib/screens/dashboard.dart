@@ -186,7 +186,8 @@ class DashboardScreen extends StatelessWidget {
     for (final item in transactions) {
       totals[item.category] = (totals[item.category] ?? 0) + item.amount;
     }
-    return totals.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    final positive = totals.entries.where((entry) => entry.value > 0).toList();
+    return positive.isEmpty ? 'No net spending' : positive.reduce((a, b) => a.value >= b.value ? a : b).key;
   }
 }
 

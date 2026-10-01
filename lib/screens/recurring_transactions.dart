@@ -260,7 +260,7 @@ class _RecurringCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final positive = recurring.isIncome;
+    final positive = recurring.isIncome || recurring.amount < 0;
     final amountColor = positive ? scheme.primary : scheme.error;
     final next = recurring.nextDueDate(DateTime.now());
 
@@ -689,17 +689,14 @@ class _RecurringTransactionEditorState
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
+                signed: true,
               ),
               decoration: InputDecoration(
                 labelText: 'Amount',
+                helperText: _type == TransactionType.expense ? 'Use a negative amount for a recurring reimbursement.' : null,
                 suffixText: controller.currencyCode,
               ),
-              validator: (value) {
-                final parsed = double.tryParse(value?.trim() ?? '');
-                return parsed == null || parsed <= 0
-                    ? 'Enter an amount greater than 0'
-                    : null;
-              },
+              validator: _type.validateAmount,
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(

@@ -2,6 +2,50 @@ import 'package:budget_tracker/models/transaction.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('refund editing and JSON preserve signed expense and cash flow', () {
+    final purchase = Transaction(
+      id: 'refund',
+      store: 'Travel',
+      amount: 800,
+      category: 'Travel',
+      date: DateTime(2026, 10, 1),
+    );
+    final refund = Transaction.fromJson(
+      purchase.copyWith(amount: -800).toJson(),
+    );
+    expect(refund.amount, -800);
+    expect(refund.isExpense, isTrue);
+    expect(refund.isIncome, isFalse);
+    expect(refund.cashFlow, 800);
+    expect(purchase.cashFlow, -800);
+  });
+
+  test(
+      'amount validation permits only finite nonzero expenses and positive income',
+      () {
+    for (final value in [
+      '0',
+      '-0',
+      'NaN',
+      'Infinity',
+      '-Infinity',
+      '',
+      'abc',
+      '100000000',
+      '-100000000',
+    ]) {
+      expect(
+        TransactionType.expense.validateAmount(value),
+        isNotNull,
+        reason: value,
+      );
+    }
+    expect(TransactionType.expense.validateAmount('-800.50'), isNull);
+    expect(TransactionType.expense.validateAmount('800.50'), isNull);
+    expect(TransactionType.income.validateAmount('-800.50'), isNotNull);
+    expect(TransactionType.income.validateAmount('800.50'), isNull);
+  });
+
   test('transaction JSON round-trip preserves income type', () {
     final original = Transaction(
       id: '1',

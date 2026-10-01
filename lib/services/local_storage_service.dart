@@ -233,7 +233,7 @@ class LocalStorageService {
               Map<String, dynamic>.from(item),
             ),
           )
-          .where((item) => item.amount > 0)
+          .where((item) => item.type.acceptsAmount(item.amount))
           .toList();
     } catch (_) {
       return [];

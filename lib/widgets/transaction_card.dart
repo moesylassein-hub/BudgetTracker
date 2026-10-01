@@ -61,17 +61,20 @@ class TransactionCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       '${transaction.category} • ${AppFormatters.shortDate(transaction.date)}',
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
               Text(
-                '${transaction.isIncome ? '+' : '-'}${AppFormatters.money(transaction.amount, currencyCode: displayCurrency)}',
+                '${transaction.cashFlow >= 0 ? '+' : '-'}${AppFormatters.money(transaction.amount.abs(), currencyCode: displayCurrency)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  color: transaction.isIncome ? scheme.tertiary : null,
+                  color: transaction.cashFlow > 0 ? scheme.tertiary : null,
                 ),
               ),
             ],

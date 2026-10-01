@@ -54,6 +54,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         final net = income - spent;
         final savingsRate = income <= 0 ? 0.0 : (net / income) * 100;
         final totals = _categoryTotals(expenses);
+        final positiveTotals = totals.entries.where((entry) => entry.value > 0).toList();
+        final chartTotal = positiveTotals.fold<double>(0, (sum, entry) => sum + entry.value);
         final previous = DateTime(
           _month.year,
           _month.month - 1,
@@ -61,9 +63,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         );
         final previousSpent = controller.spentForMonth(previous);
         final change = previousSpent <= 0 ? null : ((spent - previousSpent) / previousSpent) * 100;
-        final biggest = expenses.isEmpty
+        final purchases = expenses.where((item) => item.amount > 0).toList();
+        final biggest = purchases.isEmpty
             ? null
-            : expenses.reduce((a, b) => a.amount >= b.amount ? a : b);
+            : purchases.reduce((a, b) => a.amount >= b.amount ? a : b);
         final days = _daysForAverage(_month);
         final dailyAverage = days == 0 ? 0.0 : spent / days;
         final isCurrentMonth = _month == controller.currentCycleStart;
@@ -150,6 +153,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
                   child: Column(
                     children: [
+                      const Text('Net category spending. Chart shares use positive category totals.'),
+                      if (positiveTotals.isNotEmpty)
                       SizedBox(
                         height: 220,
                         child: PieChart(
@@ -157,8 +162,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                             centerSpaceRadius: 58,
                             sectionsSpace: 3,
                             startDegreeOffset: -90,
-                            sections: totals.entries.map((entry) {
-                              final percentage = spent == 0 ? 0 : (entry.value / spent) * 100;
+                            sections: positiveTotals.map((entry) {
+                              final percentage = (entry.value / chartTotal) * 100;
                               return PieChartSectionData(
                                 value: entry.value,
                                 color: AppCategories.colorFor(entry.key, Theme.of(context).colorScheme),
@@ -182,7 +187,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                           child: _CategoryRow(
                             category: entry.key,
                             amount: entry.value,
-                            total: spent,
+                            total: chartTotal,
                             currencyCode: controller.currencyCode,
                           ),
                         ),
@@ -382,6 +387,7 @@ class _CategoryRow extends StatelessWidget {
         Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 10),
         Expanded(child: Text(category, style: const TextStyle(fontWeight: FontWeight.w700))),
+        if (amount > 0 && total > 0)
         Text('${((amount / total) * 100).round()}%', style: TextStyle(color: scheme.onSurfaceVariant)),
         const SizedBox(width: 14),
         Text(AppFormatters.money(amount, currencyCode: currencyCode), style: const TextStyle(fontWeight: FontWeight.w800)),

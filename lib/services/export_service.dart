@@ -13,11 +13,11 @@ class ExportService {
   static const _excelMime =
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-  Future<void> shareCsv({
+  Uint8List encodeCsv({
     required List<Transaction> transactions,
     required String currencyCode,
     required int budgetCycleStartDay,
-  }) async {
+  }) {
     final rows = <List<String>>[
       [
         'Date',
@@ -42,7 +42,19 @@ class ExportService {
     ];
 
     final csv = rows.map((row) => row.map(_escapeCsv).join(',')).join('\r\n');
-    final bytes = Uint8List.fromList(utf8.encode('\ufeff$csv'));
+    return Uint8List.fromList(utf8.encode('\ufeff$csv'));
+  }
+
+  Future<void> shareCsv({
+    required List<Transaction> transactions,
+    required String currencyCode,
+    required int budgetCycleStartDay,
+  }) async {
+    final bytes = encodeCsv(
+      transactions: transactions,
+      currencyCode: currencyCode,
+      budgetCycleStartDay: budgetCycleStartDay,
+    );
     final fileName = 'budget_tracker_${_fileStamp(DateTime.now())}.csv';
 
     await SharePlus.instance.share(
@@ -50,19 +62,17 @@ class ExportService {
         title: 'Export Budget Tracker CSV',
         subject: 'Budget Tracker transactions',
         text: 'Budget Tracker transaction export',
-        files: [
-          XFile.fromData(bytes, mimeType: 'text/csv'),
-        ],
+        files: [XFile.fromData(bytes, mimeType: 'text/csv')],
         fileNameOverrides: [fileName],
       ),
     );
   }
 
-  Future<void> shareExcel({
+  Uint8List encodeExcel({
     required List<Transaction> transactions,
     required String currencyCode,
     required int budgetCycleStartDay,
-  }) async {
+  }) {
     final workbook = Excel.createExcel();
     final defaultSheet = workbook.getDefaultSheet();
     if (defaultSheet != null && defaultSheet != 'Transactions') {
@@ -139,10 +149,7 @@ class ExportService {
       TextCellValue('Generated'),
       TextCellValue(DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())),
     ]);
-    summary.appendRow([
-      TextCellValue('Currency'),
-      TextCellValue(currencyCode),
-    ]);
+    summary.appendRow([TextCellValue('Currency'), TextCellValue(currencyCode)]);
     summary.appendRow([
       TextCellValue('Transactions'),
       IntCellValue(transactions.length),
@@ -171,7 +178,19 @@ class ExportService {
       throw StateError('Could not create the Excel workbook.');
     }
 
-    final bytes = Uint8List.fromList(encoded);
+    return Uint8List.fromList(encoded);
+  }
+
+  Future<void> shareExcel({
+    required List<Transaction> transactions,
+    required String currencyCode,
+    required int budgetCycleStartDay,
+  }) async {
+    final bytes = encodeExcel(
+      transactions: transactions,
+      currencyCode: currencyCode,
+      budgetCycleStartDay: budgetCycleStartDay,
+    );
     final fileName = 'budget_tracker_${_fileStamp(DateTime.now())}.xlsx';
 
     await SharePlus.instance.share(
@@ -179,9 +198,7 @@ class ExportService {
         title: 'Export Budget Tracker Excel',
         subject: 'Budget Tracker transactions',
         text: 'Budget Tracker Excel export',
-        files: [
-          XFile.fromData(bytes, mimeType: _excelMime),
-        ],
+        files: [XFile.fromData(bytes, mimeType: _excelMime)],
         fileNameOverrides: [fileName],
       ),
     );

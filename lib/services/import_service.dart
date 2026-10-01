@@ -298,7 +298,7 @@ class ImportService {
         }
 
         final amountAndType = _resolveAmountAndType(row, mapping, typeText);
-        if (amountAndType == null || amountAndType.amount <= 0) {
+        if (amountAndType == null || !amountAndType.type.acceptsAmount(amountAndType.amount)) {
           invalidCount++;
           warnings.add(
             'Row ' + (rowIndex + 2).toString() + ': amount could not be read.',
@@ -571,10 +571,10 @@ class ImportService {
     final expense = _parseAmount(_cell(row, mapping.expenseAmount));
 
     if (income != null && income.abs() > 0) {
-      return _AmountAndType(income.abs(), TransactionType.income);
+      return _AmountAndType(income, TransactionType.income);
     }
     if (expense != null && expense.abs() > 0) {
-      return _AmountAndType(expense.abs(), TransactionType.expense);
+      return _AmountAndType(expense, TransactionType.expense);
     }
 
     final signed = _parseAmount(_cell(row, mapping.amount));
@@ -582,7 +582,7 @@ class ImportService {
 
     final explicitType = _parseType(typeText);
     if (explicitType != null) {
-      return _AmountAndType(signed.abs(), explicitType);
+      return _AmountAndType(signed, explicitType);
     }
 
     // Money Tracker (Paraga) documents Amount(Auto) as using negative values
