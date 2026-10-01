@@ -1,9 +1,69 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart';
 import 'package:budget_tracker/models/transaction.dart';
 import 'package:budget_tracker/services/import_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const service = ImportService();
+
+  group('Money Tracker file decoding', () {
+    test('reads Paraga-style CSV bytes', () {
+      final bytes = Uint8List.fromList(
+        utf8.encode(
+          'Date,Category,Remark,Amount\r\n'
+          '25-09-2026,Salary,Salary,15000\r\n'
+          '26-09-2026,Food,Lunch,-100\r\n',
+        ),
+      );
+
+      final table = service.readFile(
+        fileName: 'money_tracker.csv',
+        bytes: bytes,
+      );
+
+      expect(table.looksLikeParagaMoneyTracker, isTrue);
+      expect(table.rows, hasLength(2));
+      expect(service.detectMapping(table).amount, 3);
+    });
+
+    test('reads Paraga-style XLSX bytes', () {
+      final workbook = Excel.createExcel();
+      final defaultSheet = workbook.getDefaultSheet();
+      if (defaultSheet != null && defaultSheet != 'Transactions') {
+        workbook.rename(defaultSheet, 'Transactions');
+      }
+      final sheet = workbook['Transactions'];
+      sheet.appendRow([
+        TextCellValue('Date'),
+        TextCellValue('Category'),
+        TextCellValue('Remark'),
+        TextCellValue('Income'),
+        TextCellValue('Expense'),
+      ]);
+      sheet.appendRow([
+        TextCellValue('2026-09-25'),
+        TextCellValue('Salary'),
+        TextCellValue('Salary'),
+        DoubleCellValue(15000),
+        TextCellValue(''),
+      ]);
+
+      final encoded = workbook.encode();
+      expect(encoded, isNotNull);
+
+      final table = service.readFile(
+        fileName: 'money_tracker.xlsx',
+        bytes: Uint8List.fromList(encoded!),
+      );
+
+      expect(table.sheetName, 'Transactions');
+      expect(table.looksLikeParagaMoneyTracker, isTrue);
+      expect(service.detectMapping(table).incomeAmount, 3);
+    });
+  });
 
   group('Money Tracker by Paraga import compatibility', () {
     test('imports signed Amount(Auto) layout', () {
