@@ -1,5 +1,5 @@
 class BudgetCycle {
-  static int normalizeStartDay(int value) => value.clamp(1, 28);
+  static int normalizeStartDay(int value) => value.clamp(1, 28).toInt();
 
   static DateTime startFor(DateTime reference, int startDay) {
     final day = normalizeStartDay(startDay);
