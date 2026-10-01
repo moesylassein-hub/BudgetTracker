@@ -252,7 +252,7 @@ class RecurringTransaction {
   DateTime _monthlyOccurrence(int year, int month) {
     final preferred = dayOfMonth.clamp(1, 31).toInt();
     final lastDay = DateTime(year, month + 1, 0).day;
-    return DateTime(year, month, preferred.clamp(1, lastDay).toInt(), 12);
+    return DateTime(year, month, preferred.clamp(1, lastDay).toInt());
   }
 
   static DateTime _dateOnly(DateTime value) =>
