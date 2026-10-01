@@ -18,6 +18,9 @@ class Transaction {
   final String category;
   final DateTime date;
   final String note;
+  final String ledger;
+  final String account;
+  final String currencyCode;
   final TransactionType type;
 
   const Transaction({
@@ -27,6 +30,9 @@ class Transaction {
     required this.category,
     required this.date,
     this.note = '',
+    this.ledger = '',
+    this.account = '',
+    this.currencyCode = '',
     this.type = TransactionType.expense,
   });
 
@@ -40,6 +46,9 @@ class Transaction {
     String? category,
     DateTime? date,
     String? note,
+    String? ledger,
+    String? account,
+    String? currencyCode,
     TransactionType? type,
   }) {
     return Transaction(
@@ -49,6 +58,9 @@ class Transaction {
       category: category ?? this.category,
       date: date ?? this.date,
       note: note ?? this.note,
+      ledger: ledger ?? this.ledger,
+      account: account ?? this.account,
+      currencyCode: currencyCode ?? this.currencyCode,
       type: type ?? this.type,
     );
   }
@@ -60,6 +72,9 @@ class Transaction {
         'category': category,
         'date': date.toIso8601String(),
         'note': note,
+        'ledger': ledger,
+        'account': account,
+        'currencyCode': currencyCode,
         'type': type.name,
       };
 
@@ -71,6 +86,9 @@ class Transaction {
       category: (json['category'] as String?) ?? 'Other',
       date: DateTime.parse(json['date'] as String),
       note: (json['note'] as String?) ?? '',
+      ledger: (json['ledger'] as String?) ?? '',
+      account: (json['account'] as String?) ?? '',
+      currencyCode: (json['currencyCode'] as String?) ?? '',
       type: TransactionType.fromName(json['type'] as String?),
     );
   }
