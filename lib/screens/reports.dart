@@ -11,7 +11,7 @@ import '../models/transaction.dart';
 import '../utils/app_categories.dart';
 import '../utils/formatters.dart';
 
-enum ReportSection { overview, trends }
+enum ReportSection { overview, trends, categories }
 
 class ReportsScreen extends StatefulWidget {
   final AppController controller;
@@ -107,6 +107,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   icon: Icon(Icons.show_chart_rounded),
                   label: Text('Trends'),
                 ),
+                ButtonSegment(
+                  value: ReportSection.categories,
+                  icon: Icon(Icons.donut_large_rounded),
+                  label: Text('Categories'),
+                ),
               ],
               selected: {_section},
               onSelectionChanged: (value) {
@@ -119,11 +124,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 controller: controller,
                 analysis: analysis,
               )
-            else
+            else if (_section == ReportSection.trends)
               _TrendsReport(
                 controller: controller,
                 analysis: analysis,
                 history: history,
+              )
+            else
+              _CategoriesReport(
+                controller: controller,
+                analysis: analysis,
               ),
           ],
         );
@@ -344,6 +354,456 @@ class _TrendsReport extends StatelessWidget {
     final prefix = value > 0 ? '+' : '';
     return prefix + value.toStringAsFixed(0) + '%';
   }
+}
+
+
+class _CategoriesReport extends StatelessWidget {
+  final AppController controller;
+  final _ReportAnalysis analysis;
+
+  const _CategoriesReport({
+    required this.controller,
+    required this.analysis,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = analysis.categoryTotals;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionTitle(
+          title: 'Spending breakdown',
+          subtitle: 'See which categories take the biggest share of this cycle',
+        ),
+        const SizedBox(height: 10),
+        if (totals.isEmpty)
+          const _EmptyReportCard(
+            icon: Icons.donut_large_rounded,
+            title: 'No category data yet',
+            text: 'Add expenses to unlock your spending breakdown.',
+          )
+        else
+          _EnhancedCategoryDonutCard(
+            controller: controller,
+            analysis: analysis,
+          ),
+        const SizedBox(height: 22),
+        _SectionTitle(
+          title: 'Category limits',
+          subtitle: 'Which budgets are safe, close, or already exceeded',
+        ),
+        const SizedBox(height: 10),
+        _CategoryBudgetCard(
+          controller: controller,
+          analysis: analysis,
+        ),
+      ],
+    );
+  }
+}
+
+class _EnhancedCategoryDonutCard extends StatefulWidget {
+  final AppController controller;
+  final _ReportAnalysis analysis;
+
+  const _EnhancedCategoryDonutCard({
+    required this.controller,
+    required this.analysis,
+  });
+
+  @override
+  State<_EnhancedCategoryDonutCard> createState() =>
+      _EnhancedCategoryDonutCardState();
+}
+
+class _EnhancedCategoryDonutCardState
+    extends State<_EnhancedCategoryDonutCard> {
+  int _touchedIndex = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final analysis = widget.analysis;
+    final scheme = Theme.of(context).colorScheme;
+    final all = analysis.categoryTotals.entries.toList();
+
+    final slices = <_CategorySlice>[
+      for (final entry in all.take(5))
+        _CategorySlice(entry.key, entry.value),
+    ];
+
+    final otherTotal = all
+        .skip(5)
+        .fold<double>(0, (sum, entry) => sum + entry.value);
+    if (otherTotal > 0) {
+      slices.add(_CategorySlice('Other', otherTotal));
+    }
+
+    final total = analysis.snapshot.spent;
+    final selected =
+        _touchedIndex >= 0 && _touchedIndex < slices.length
+            ? slices[_touchedIndex]
+            : null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 245,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PieChart(
+                    PieChartData(
+                      centerSpaceRadius: 62,
+                      sectionsSpace: 3,
+                      startDegreeOffset: -90,
+                      pieTouchData: PieTouchData(
+                        touchCallback: (event, response) {
+                          setState(() {
+                            if (!event.isInterestedForInteractions ||
+                                response?.touchedSection == null) {
+                              _touchedIndex = -1;
+                            } else {
+                              _touchedIndex = response!
+                                  .touchedSection!
+                                  .touchedSectionIndex;
+                            }
+                          });
+                        },
+                      ),
+                      sections: [
+                        for (var i = 0; i < slices.length; i++)
+                          PieChartSectionData(
+                            value: slices[i].amount,
+                            color: slices[i].name == 'Other'
+                                ? scheme.outline
+                                : AppCategories.colorFor(
+                                    slices[i].name,
+                                    scheme,
+                                  ),
+                            radius: i == _touchedIndex ? 52 : 43,
+                            title: _slicePercent(
+                                      slices[i].amount,
+                                      total,
+                                    ) >=
+                                    8
+                                ? _slicePercent(
+                                        slices[i].amount,
+                                        total,
+                                      ).round().toString() +
+                                    '%'
+                                : '',
+                            titleStyle: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: Column(
+                      key: ValueKey(selected?.name ?? 'total'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          selected?.name ?? 'Total spent',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          AppFormatters.compactMoney(
+                            selected?.amount ?? total,
+                            currencyCode: controller.currencyCode,
+                          ),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20,
+                          ),
+                        ),
+                        if (selected != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _slicePercent(selected.amount, total)
+                                    .toStringAsFixed(1) +
+                                '% of expenses',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap a slice to inspect it. Smaller categories are grouped into Other.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < slices.length; i++)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(99),
+                    onTap: () {
+                      setState(() {
+                        _touchedIndex = _touchedIndex == i ? -1 : i;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: i == _touchedIndex
+                            ? scheme.primaryContainer
+                            : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: slices[i].name == 'Other'
+                                  ? scheme.outline
+                                  : AppCategories.colorFor(
+                                      slices[i].name,
+                                      scheme,
+                                    ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            slices[i].name +
+                                ' ' +
+                                _slicePercent(
+                                  slices[i].amount,
+                                  total,
+                                ).round().toString() +
+                                '%',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double _slicePercent(double amount, double total) {
+    if (total <= 0) return 0;
+    return amount / total * 100;
+  }
+}
+
+class _CategoryBudgetCard extends StatelessWidget {
+  final AppController controller;
+  final _ReportAnalysis analysis;
+
+  const _CategoryBudgetCard({
+    required this.controller,
+    required this.analysis,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = controller.categories
+        .where(
+          (item) =>
+              item.type == TransactionType.expense &&
+              (item.monthlyBudget ?? 0) > 0,
+        )
+        .toList();
+
+    if (categories.isEmpty) {
+      return const _EmptyReportCard(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'No category limits yet',
+        text: 'Set category budgets in Settings to track limits here.',
+      );
+    }
+
+    categories.sort((a, b) {
+      final aRatio =
+          controller.categorySpent(a.name, analysis.snapshot.start) /
+              (a.monthlyBudget ?? 1);
+      final bRatio =
+          controller.categorySpent(b.name, analysis.snapshot.start) /
+              (b.monthlyBudget ?? 1);
+      return bRatio.compareTo(aRatio);
+    });
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            for (var i = 0; i < categories.length; i++) ...[
+              Builder(
+                builder: (context) {
+                  final category = categories[i];
+                  final limit = category.monthlyBudget!;
+                  final spent = controller.categorySpent(
+                    category.name,
+                    analysis.snapshot.start,
+                  );
+                  final raw = limit <= 0 ? 0.0 : spent / limit;
+                  final remaining = limit - spent;
+                  final over = remaining < 0;
+                  final close = !over && raw >= 0.8;
+                  final scheme = Theme.of(context).colorScheme;
+
+                  return Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(
+                                  AppCategories.iconFor(
+                                    category.name,
+                                    iconKey: category.iconKey,
+                                  ),
+                                  size: 19,
+                                  color: over
+                                      ? scheme.error
+                                      : close
+                                          ? scheme.tertiary
+                                          : scheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    category.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            over
+                                ? AppFormatters.compactMoney(
+                                      remaining.abs(),
+                                      currencyCode: controller.currencyCode,
+                                    ) +
+                                    ' over'
+                                : AppFormatters.compactMoney(
+                                      remaining,
+                                      currencyCode: controller.currencyCode,
+                                    ) +
+                                    ' left',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: over
+                                  ? scheme.error
+                                  : close
+                                      ? scheme.tertiary
+                                      : scheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: raw.clamp(0.0, 1.0).toDouble(),
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(99),
+                        color: over
+                            ? scheme.error
+                            : close
+                                ? scheme.tertiary
+                                : scheme.primary,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            AppFormatters.money(
+                                  spent,
+                                  currencyCode: controller.currencyCode,
+                                ) +
+                                ' of ' +
+                                AppFormatters.money(
+                                  limit,
+                                  currencyCode: controller.currencyCode,
+                                ),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            (raw * 100).round().toString() + '%',
+                            style: TextStyle(
+                              color: over
+                                  ? scheme.error
+                                  : scheme.onSurfaceVariant,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+              if (i != categories.length - 1)
+                const Divider(height: 26),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategorySlice {
+  final String name;
+  final double amount;
+
+  const _CategorySlice(this.name, this.amount);
 }
 
 class _CycleHeader extends StatelessWidget {
