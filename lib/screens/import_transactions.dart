@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -49,7 +50,7 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
       final file = result.files.single;
       Uint8List? bytes = file.bytes;
       if (bytes == null && file.path != null) {
-        bytes = await XFile(file.path!).readAsBytes();
+        bytes = await File(file.path!).readAsBytes();
       }
       if (bytes == null) {
         throw const FormatException('Could not read the selected file.');
