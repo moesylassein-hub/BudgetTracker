@@ -20,13 +20,19 @@ Budget alerts are optional and disabled by default. If you enable them, the app 
 
 The app can expose local Android launcher shortcuts for adding an expense, adding income, and scanning a receipt. Using these shortcuts does not transmit financial data to an app-operated server.
 
+## Google Drive backup
+
+Google Drive backup is optional and disabled until you connect a Google account. If enabled, Budget Tracker can upload backup snapshots containing your transactions, goals, categories, budgets, currency preference, theme preference, budget-cycle start day, and budget-alert setting to the app's private Google Drive application-data area. The app requests the narrow Google Drive app-data permission and does not need access to your normal Drive files.
+
+Automatic backup can be set to Off, Daily, Weekly, or Monthly. Automatic backups run while the app is active and only when local data has changed. You can also start a backup manually or restore the latest available backup from Settings.
+
 ## Internet, accounts, analytics, and advertising
 
-The production Android manifest does not request Internet access. Budget Tracker does not include an account system, advertising SDK, analytics SDK, or cloud synchronization service in this version.
+The production Android manifest requests Internet access for the optional Google Drive backup feature. Google sign-in is used only when you explicitly connect Drive backup. Budget Tracker does not include advertising or analytics SDKs and does not send budgeting data to an app-operated server.
 
 ## Data sharing
 
-Budget Tracker does not sell your personal information. The app does not send your budgeting data to an app-operated server or share it with advertisers.
+Budget Tracker does not sell your personal information. The app does not send your budgeting data to an app-operated server or share it with advertisers. If you enable Google Drive backup, backup data is sent directly from the app to Google Drive under your Google account.
 
 ## Data retention and deletion
 
