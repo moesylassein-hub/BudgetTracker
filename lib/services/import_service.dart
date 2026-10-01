@@ -29,6 +29,9 @@ class ImportMapping {
   final int? date;
   final int? description;
   final int? category;
+  final int? subCategory;
+  final int? ledger;
+  final int? account;
   final int? note;
   final int? amount;
   final int? incomeAmount;
@@ -42,6 +45,9 @@ class ImportMapping {
     this.date,
     this.description,
     this.category,
+    this.subCategory,
+    this.ledger,
+    this.account,
     this.note,
     this.amount,
     this.incomeAmount,
@@ -56,6 +62,9 @@ class ImportMapping {
     int? date,
     int? description,
     int? category,
+    int? subCategory,
+    int? ledger,
+    int? account,
     int? note,
     int? amount,
     int? incomeAmount,
@@ -67,6 +76,9 @@ class ImportMapping {
     bool clearDate = false,
     bool clearDescription = false,
     bool clearCategory = false,
+    bool clearSubCategory = false,
+    bool clearLedger = false,
+    bool clearAccount = false,
     bool clearNote = false,
     bool clearAmount = false,
     bool clearIncomeAmount = false,
@@ -81,6 +93,10 @@ class ImportMapping {
       description:
           clearDescription ? null : description ?? this.description,
       category: clearCategory ? null : category ?? this.category,
+      subCategory:
+          clearSubCategory ? null : subCategory ?? this.subCategory,
+      ledger: clearLedger ? null : ledger ?? this.ledger,
+      account: clearAccount ? null : account ?? this.account,
       note: clearNote ? null : note ?? this.note,
       amount: clearAmount ? null : amount ?? this.amount,
       incomeAmount:
@@ -166,8 +182,25 @@ class ImportService {
         'transaction',
         'details',
         'name',
+        'note',
+        'notes',
       ]),
       category: find(const ['category', 'categories']),
+      subCategory: find(const [
+        'subcategory',
+        'subcategories',
+        'subcat',
+      ]),
+      ledger: find(const [
+        'ledger',
+        'ledgername',
+        'book',
+        'bookname',
+      ]),
+      account: find(const [
+        'account',
+        'accountname',
+      ]),
       note: find(const ['note', 'notes', 'memo', 'comment', 'comments']),
       amount: find(const [
         'amount',
@@ -201,8 +234,6 @@ class ImportService {
       wallet: find(const [
         'wallet',
         'walletname',
-        'account',
-        'accountname',
       ]),
       currency: find(const [
         'currency',
@@ -248,6 +279,8 @@ class ImportService {
       try {
         final typeText = _cell(row, mapping.type).toLowerCase();
         final categoryText = _cell(row, mapping.category).trim();
+        final subCategoryText =
+            _cell(row, mapping.subCategory).trim();
 
         if (_looksLikeTransfer(typeText) ||
             _looksLikeTransfer(categoryText.toLowerCase())) {
@@ -281,6 +314,9 @@ class ImportService {
         }
 
         var category = categoryText;
+        if (category.isEmpty && subCategoryText.isNotEmpty) {
+          category = subCategoryText;
+        }
         if (category.isEmpty) {
           category = amountAndType.type == TransactionType.income
               ? 'Other Income'
@@ -290,6 +326,17 @@ class ImportService {
         final noteParts = <String>[];
         final note = _cell(row, mapping.note).trim();
         if (note.isNotEmpty && note != description) noteParts.add(note);
+
+        final ledger = _cell(row, mapping.ledger).trim();
+        if (ledger.isNotEmpty) noteParts.add('Ledger: ' + ledger);
+
+        final account = _cell(row, mapping.account).trim();
+        if (account.isNotEmpty) noteParts.add('Account: ' + account);
+
+        if (subCategoryText.isNotEmpty &&
+            subCategoryText.toLowerCase() != category.toLowerCase()) {
+          noteParts.add('Sub-category: ' + subCategoryText);
+        }
 
         final wallet = _cell(row, mapping.wallet).trim();
         if (wallet.isNotEmpty) noteParts.add('Wallet: ' + wallet);
@@ -347,8 +394,18 @@ class ImportService {
   ImportTable _readCsv(String fileName, Uint8List bytes) {
     var text = utf8.decode(bytes, allowMalformed: true);
     if (text.startsWith('\ufeff')) text = text.substring(1);
+    text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
-    final rows = const CsvToListConverter(
+    final firstLine = text
+        .split('\n')
+        .firstWhere(
+          (line) => line.trim().isNotEmpty,
+          orElse: () => '',
+        );
+    final delimiter = _detectDelimiter(firstLine);
+
+    final rows = CsvToListConverter(
+      fieldDelimiter: delimiter,
       shouldParseNumbers: false,
     ).convert(text);
 
@@ -413,12 +470,75 @@ class ImportService {
       );
     }
 
-    final headers = rows.first;
+    var headerIndex = 0;
+    for (var i = 0; i < rows.length && i < 20; i++) {
+      final normalized = rows[i].map(_normalizeHeader).toSet();
+      final hasDate = normalized.any(
+        (value) => value == 'date' || value == 'transactiondate',
+      );
+      final hasAmount = normalized.any(
+        (value) =>
+            value == 'amount' ||
+            value == 'amountauto' ||
+            value == 'income' ||
+            value == 'expense' ||
+            value == 'amountincome' ||
+            value == 'amountexpense',
+      );
+      if (hasDate && hasAmount) {
+        headerIndex = i;
+        break;
+      }
+    }
+
+    final headers = rows[headerIndex];
     final width = headers.length;
-    final dataRows = rows.skip(1).map((row) {
-      if (row.length >= width) return row.take(width).toList();
-      return [...row, ...List.filled(width - row.length, '')];
-    }).toList();
+    final amountIndex = headers.indexWhere(
+      (header) {
+        final normalized = _normalizeHeader(header);
+        return normalized == 'amount' ||
+            normalized == 'amountauto' ||
+            normalized == 'transactionamount';
+      },
+    );
+
+    final dataRows = rows.skip(headerIndex + 1).map((row) {
+      var normalizedRow = List<String>.from(row);
+
+      // Some finance apps export values such as £4,233.33 without quoting
+      // the thousands comma. CSV then sees one extra field and shifts every
+      // later column. Rejoin the overflow back into the Amount cell.
+      if (amountIndex >= 0 && normalizedRow.length > width) {
+        final overflow = normalizedRow.length - width;
+        final amountEnd = amountIndex + overflow;
+        if (amountEnd < normalizedRow.length) {
+          normalizedRow = [
+            ...normalizedRow.take(amountIndex),
+            normalizedRow
+                .sublist(amountIndex, amountEnd + 1)
+                .join(','),
+            ...normalizedRow.skip(amountEnd + 1),
+          ];
+        }
+      }
+
+      if (normalizedRow.length > width) {
+        normalizedRow = normalizedRow.take(width).toList();
+      }
+      if (normalizedRow.length < width) {
+        normalizedRow = [
+          ...normalizedRow,
+          ...List.filled(width - normalizedRow.length, ''),
+        ];
+      }
+      return normalizedRow;
+    }).where((row) => row.any((cell) => cell.isNotEmpty)).toList();
+
+    if (dataRows.isEmpty) {
+      throw const FormatException(
+        'The file has headers but no transaction rows.',
+      );
+    }
 
     final normalized = headers.map(_normalizeHeader).toSet();
     final looksLikeParaga =
@@ -588,6 +708,17 @@ class ImportService {
   String _cell(List<String> row, int? index) {
     if (index == null || index < 0 || index >= row.length) return '';
     return row[index];
+  }
+
+  String _detectDelimiter(String headerLine) {
+    final counts = <String, int>{
+      ',': ','.allMatches(headerLine).length,
+      ';': ';'.allMatches(headerLine).length,
+      '\t': '\t'.allMatches(headerLine).length,
+    };
+    return counts.entries.reduce(
+      (a, b) => a.value >= b.value ? a : b,
+    ).key;
   }
 
   String _normalizeHeader(String value) => value
