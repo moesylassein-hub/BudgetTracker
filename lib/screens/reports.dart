@@ -458,48 +458,53 @@ class _CycleHeader extends StatelessWidget {
         .budgetCycleEndExclusiveFor(cycle)
         .subtract(const Duration(days: 1));
 
-    return Row(
+    return Column(
       children: [
-        IconButton.filledTonal(
-          tooltip: 'Previous budget cycle',
-          onPressed: onPrevious,
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
-            children: [
-              Text(
-                AppFormatters.dateRange(start, end),
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
+        Row(
+          children: [
+            IconButton.filledTonal(
+              tooltip: 'Previous budget cycle',
+              onPressed: onPrevious,
+              icon: const Icon(Icons.chevron_left_rounded),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    AppFormatters.dateRange(start, end),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isCurrent ? 'Current budget cycle' : 'Past budget cycle',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
                     ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                isCurrent ? 'Current budget cycle' : 'Past budget cycle',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 6),
+            IconButton.filledTonal(
+              tooltip: 'Next budget cycle',
+              onPressed: onNext,
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+          ],
         ),
-        const SizedBox(width: 6),
-        if (!isCurrent)
-          IconButton.filledTonal(
-            tooltip: 'Jump to current cycle',
+        if (!isCurrent) ...[
+          const SizedBox(height: 4),
+          TextButton.icon(
             onPressed: onCurrent,
-            icon: const Icon(Icons.today_rounded),
-          )
-        else
-          IconButton.filledTonal(
-            tooltip: 'Next budget cycle',
-            onPressed: onNext,
-            icon: const Icon(Icons.chevron_right_rounded),
+            icon: const Icon(Icons.today_rounded, size: 18),
+            label: const Text('Jump to current cycle'),
           ),
+        ],
       ],
     );
   }
