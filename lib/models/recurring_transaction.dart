@@ -99,7 +99,8 @@ class RecurringTransaction {
 
     DateTime candidate;
     if (frequency == RecurringFrequency.weekly) {
-      final targetWeekday = weekday.clamp(DateTime.monday, DateTime.sunday);
+      final targetWeekday =
+          weekday.clamp(DateTime.monday, DateTime.sunday).toInt();
       var daysAhead = (targetWeekday - after.weekday) % 7;
       if (daysAhead == 0) daysAhead = 7;
       candidate = after.add(Duration(days: daysAhead));
@@ -198,9 +199,10 @@ class RecurringTransaction {
       startDate: _dateOnly(start),
       endDate: DateTime.tryParse(json['endDate'] as String? ?? ''),
       dayOfMonth:
-          ((json['dayOfMonth'] as num?)?.toInt() ?? start.day).clamp(1, 31),
+          ((json['dayOfMonth'] as num?)?.toInt() ?? start.day).clamp(1, 31).toInt(),
       weekday: ((json['weekday'] as num?)?.toInt() ?? start.weekday)
-          .clamp(DateTime.monday, DateTime.sunday),
+          .clamp(DateTime.monday, DateTime.sunday)
+          .toInt(),
       note: (json['note'] as String?) ?? '',
       isActive: json['isActive'] as bool? ?? true,
       lastGeneratedOn:
@@ -248,9 +250,9 @@ class RecurringTransaction {
   }
 
   DateTime _monthlyOccurrence(int year, int month) {
-    final preferred = dayOfMonth.clamp(1, 31);
+    final preferred = dayOfMonth.clamp(1, 31).toInt();
     final lastDay = DateTime(year, month + 1, 0).day;
-    return DateTime(year, month, preferred.clamp(1, lastDay), 12);
+    return DateTime(year, month, preferred.clamp(1, lastDay).toInt(), 12);
   }
 
   static DateTime _dateOnly(DateTime value) =>
