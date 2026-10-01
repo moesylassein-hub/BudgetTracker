@@ -7,6 +7,7 @@ import '../utils/budget_cycle.dart';
 import '../utils/currencies.dart';
 import '../utils/formatters.dart';
 import 'categories.dart';
+import 'recurring_transactions.dart';
 
 class SettingsScreen extends StatelessWidget {
   final AppController controller;
@@ -362,6 +363,28 @@ class SettingsScreen extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => CategoriesScreen(controller: controller)),
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 76),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                    leading: const _SettingsIcon(Icons.event_repeat_rounded),
+                    title: const Text(
+                      'Recurring transactions',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text(
+                      controller.activeRecurringCount == 0
+                          ? 'Automate salary, allowance and regular bills'
+                          : '${controller.activeRecurringCount} active recurring transaction${controller.activeRecurringCount == 1 ? '' : 's'}',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => RecurringTransactionsScreen(
+                          controller: controller,
+                        ),
+                      ),
                     ),
                   ),
                 ],
