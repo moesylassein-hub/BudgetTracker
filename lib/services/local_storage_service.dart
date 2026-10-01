@@ -82,6 +82,20 @@ class LocalStorageService {
     );
   }
 
+  Future<void> insertTransactions(List<Transaction> transactions) async {
+    if (transactions.isEmpty) return;
+    final db = await _db;
+    final batch = db.batch();
+    for (final transaction in transactions) {
+      batch.insert(
+        _transactionsTable,
+        _transactionToRow(transaction),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<void> updateTransaction(Transaction transaction) async {
     final db = await _db;
     await db.update(
