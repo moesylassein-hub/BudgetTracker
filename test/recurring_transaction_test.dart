@@ -98,6 +98,17 @@ void main() {
       expect(rule.dueDatesThrough(DateTime(2027, 1, 1)), isEmpty);
     });
 
+    test('resume marker skips intentionally paused history', () {
+      final rule = monthlyRule(
+        start: DateTime(2026, 1, 25),
+        lastGeneratedOn: DateTime(2026, 10, 1),
+      );
+      expect(
+        rule.dueDatesThrough(DateTime(2026, 10, 30)),
+        [DateTime(2026, 10, 25)],
+      );
+    });
+
     test('occurrence IDs are deterministic per due date', () {
       final rule = monthlyRule();
       expect(
