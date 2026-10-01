@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -40,22 +39,13 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
     });
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const ['csv', 'xlsx'],
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (file == null) return;
 
-      final file = result.files.single;
-      Uint8List? bytes = file.bytes;
-      if (bytes == null && file.path != null) {
-        bytes = await File(file.path!).readAsBytes();
-      }
-      if (bytes == null) {
-        throw const FormatException('Could not read the selected file.');
-      }
-
+      final Uint8List bytes = await file.readAsBytes();
       final table = _service.readFile(
         fileName: file.name,
         bytes: bytes,
