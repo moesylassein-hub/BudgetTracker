@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/budget_category.dart';
+import '../models/recurring_transaction.dart';
 import '../models/savings_goal.dart';
 import '../models/transaction.dart';
 import '../services/drive_backup_service.dart';
@@ -20,6 +21,7 @@ class AppController extends ChangeNotifier {
   final List<Transaction> _transactions = [];
   final List<BudgetCategory> _categories = [];
   final List<SavingsGoal> _goals = [];
+  final List<RecurringTransaction> _recurringTransactions = [];
   double _monthlyBudget = 10000;
   ThemeMode _themeMode = ThemeMode.system;
   String _currencyCode = 'EGP';
@@ -37,6 +39,7 @@ class AppController extends ChangeNotifier {
   ) async {
     final controller = AppController._(storage, notifications, driveBackup);
     await controller._load();
+    await controller.processRecurringTransactions();
     await controller._checkBudgetAlerts();
     return controller;
   }
@@ -44,6 +47,10 @@ class AppController extends ChangeNotifier {
   List<Transaction> get transactions => List.unmodifiable(_transactions);
   List<BudgetCategory> get categories => List.unmodifiable(_categories);
   List<SavingsGoal> get goals => List.unmodifiable(_goals);
+  List<RecurringTransaction> get recurringTransactions =>
+      List.unmodifiable(_recurringTransactions);
+  int get activeRecurringCount =>
+      _recurringTransactions.where((item) => item.isActive).length;
   double get monthlyBudget => _monthlyBudget;
   ThemeMode get themeMode => _themeMode;
   String get currencyCode => _currencyCode;
@@ -145,6 +152,9 @@ class AppController extends ChangeNotifier {
     _goals
       ..clear()
       ..addAll(await _storage.loadGoals());
+    _recurringTransactions
+      ..clear()
+      ..addAll(await _storage.loadRecurringTransactions());
     _monthlyBudget = await _storage.loadBudget();
     _themeMode = await _storage.loadThemeMode();
     _currencyCode = await _storage.loadCurrencyCode();
@@ -259,6 +269,14 @@ class AppController extends ChangeNotifier {
           _transactions[i] = _transactions[i].copyWith(category: category.name);
         }
       }
+      for (var i = 0; i < _recurringTransactions.length; i++) {
+        if (_recurringTransactions[i].category == old.name) {
+          _recurringTransactions[i] = _recurringTransactions[i].copyWith(
+            category: category.name,
+          );
+        }
+      }
+      await _storage.saveRecurringTransactions(_recurringTransactions);
     }
     _categories[index] = category;
     await _storage.saveCategories(_categories);
@@ -273,6 +291,9 @@ class AppController extends ChangeNotifier {
     final category = matches.first;
     if (categoriesForType(category.type).length <= 1) return false;
     if (_transactions.any((item) => item.category == category.name)) return false;
+    if (_recurringTransactions.any((item) => item.category == category.name)) {
+      return false;
+    }
     _categories.removeWhere((item) => item.id == id);
     await _storage.saveCategories(_categories);
     notifyListeners();
@@ -314,6 +335,123 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
+  Future<void> addRecurringTransaction(
+    RecurringTransaction recurring,
+  ) async {
+    _recurringTransactions.add(recurring);
+    await _storage.saveRecurringTransactions(_recurringTransactions);
+    notifyListeners();
+    await processRecurringTransactions();
+    await _markBackupDirty();
+  }
+
+  Future<void> updateRecurringTransaction(
+    RecurringTransaction recurring,
+  ) async {
+    final index =
+        _recurringTransactions.indexWhere((item) => item.id == recurring.id);
+    if (index == -1) return;
+    _recurringTransactions[index] = recurring;
+    await _storage.saveRecurringTransactions(_recurringTransactions);
+    notifyListeners();
+    await processRecurringTransactions();
+    await _markBackupDirty();
+  }
+
+  Future<void> setRecurringTransactionActive(
+    String id,
+    bool active,
+  ) async {
+    final index = _recurringTransactions.indexWhere((item) => item.id == id);
+    if (index == -1) return;
+    final current = _recurringTransactions[index];
+    _recurringTransactions[index] = current.copyWith(
+      isActive: active,
+      lastGeneratedOn: active ? DateTime.now() : current.lastGeneratedOn,
+    );
+    await _storage.saveRecurringTransactions(_recurringTransactions);
+    notifyListeners();
+    await _markBackupDirty();
+  }
+
+  Future<void> deleteRecurringTransaction(String id) async {
+    _recurringTransactions.removeWhere((item) => item.id == id);
+    await _storage.saveRecurringTransactions(_recurringTransactions);
+    notifyListeners();
+    await _markBackupDirty();
+  }
+
+  Future<int> processRecurringTransactions() async {
+    if (_recurringTransactions.isEmpty) return 0;
+
+    final today = DateTime.now();
+    var createdCount = 0;
+    var rulesChanged = false;
+
+    for (var i = 0; i < _recurringTransactions.length; i++) {
+      final rule = _recurringTransactions[i];
+      if (!rule.isActive) continue;
+
+      final dueDates = rule.dueDatesThrough(today);
+      if (dueDates.isEmpty) continue;
+
+      var lastProcessed = rule.lastGeneratedOn;
+      for (final dueDate in dueDates) {
+        final transactionId = rule.occurrenceTransactionId(dueDate);
+        final alreadyExists =
+            _transactions.any((item) => item.id == transactionId);
+
+        if (!alreadyExists) {
+          final category = categoryByName(rule.category);
+          final resolvedCategory =
+              category != null && category.type == rule.type
+                  ? category.name
+                  : fallbackCategory(rule.type);
+          final transaction = Transaction(
+            id: transactionId,
+            store: rule.title,
+            amount: rule.amount,
+            category: resolvedCategory,
+            date: DateTime(
+              dueDate.year,
+              dueDate.month,
+              dueDate.day,
+              12,
+            ),
+            note: rule.note.trim().isEmpty
+                ? 'Recurring • ${rule.frequency.label}'
+                : rule.note.trim(),
+            type: rule.type,
+          );
+          await _storage.insertTransaction(transaction);
+          _transactions.add(transaction);
+          createdCount++;
+        }
+
+        lastProcessed = dueDate;
+      }
+
+      if (lastProcessed != null &&
+          lastProcessed != rule.lastGeneratedOn) {
+        _recurringTransactions[i] = rule.copyWith(
+          lastGeneratedOn: lastProcessed,
+        );
+        rulesChanged = true;
+      }
+    }
+
+    if (rulesChanged) {
+      await _storage.saveRecurringTransactions(_recurringTransactions);
+    }
+    if (createdCount > 0 || rulesChanged) {
+      _sort();
+      notifyListeners();
+      await _checkBudgetAlerts();
+      await _markBackupDirty();
+    }
+    return createdCount;
+  }
+
   Future<void> clearAllData() async {
     await _storage.clearFinancialData();
     _transactions.clear();
@@ -321,6 +459,7 @@ class AppController extends ChangeNotifier {
       ..clear()
       ..addAll(BudgetCategory.defaults);
     _goals.clear();
+    _recurringTransactions.clear();
     _monthlyBudget = 10000;
     _currencyCode = 'EGP';
     _budgetAlertsEnabled = false;
@@ -427,12 +566,14 @@ class AppController extends ChangeNotifier {
   }
 
   Map<String, dynamic> _backupSnapshot() => {
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'appVersion': '1.0.0',
         'generatedAt': DateTime.now().toUtc().toIso8601String(),
         'transactions': _transactions.map((item) => item.toJson()).toList(),
         'categories': _categories.map((item) => item.toJson()).toList(),
         'goals': _goals.map((item) => item.toJson()).toList(),
+        'recurringTransactions':
+            _recurringTransactions.map((item) => item.toJson()).toList(),
         'monthlyBudget': _monthlyBudget,
         'themeMode': _themeMode.name,
         'currencyCode': _currencyCode,
