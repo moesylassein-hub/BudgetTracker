@@ -39,9 +39,36 @@ class AppController extends ChangeNotifier {
   ) async {
     final controller = AppController._(storage, notifications, driveBackup);
     await controller._load();
-    await controller.processRecurringTransactions();
-    await controller._checkBudgetAlerts();
     return controller;
+  }
+
+  bool _startupFinished = false;
+
+  Future<void> finishStartup() async {
+    if (_startupFinished) return;
+    _startupFinished = true;
+
+    // Financial catch-up should not depend on Google Play Services or
+    // notification initialization.
+    try {
+      await processRecurringTransactions();
+    } catch (_) {
+      // Keep the app usable even if one recurring rule is malformed.
+    }
+
+    try {
+      await _notifications.initialize();
+      await _checkBudgetAlerts();
+    } catch (_) {
+      // Notifications are optional; startup must continue without them.
+    }
+
+    try {
+      await _driveBackup.initialize();
+      await maybeAutoBackup();
+    } catch (_) {
+      // Drive backup is optional and can be retried from Settings.
+    }
   }
 
   List<Transaction> get transactions => List.unmodifiable(_transactions);
