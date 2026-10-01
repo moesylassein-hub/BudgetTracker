@@ -21,15 +21,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _month = DateTime(now.year, now.month);
+    _month = widget.controller.currentCycleStart;
   }
 
   void _moveMonth(int offset) {
-    final next = DateTime(_month.year, _month.month + offset);
-    final now = DateTime.now();
-    final currentMonth = DateTime(now.year, now.month);
-    if (next.isAfter(currentMonth)) return;
+    final next = DateTime(
+      _month.year,
+      _month.month + offset,
+      widget.controller.budgetCycleStartDay,
+    );
+    if (next.isAfter(widget.controller.currentCycleStart)) return;
     setState(() => _month = next);
   }
 
@@ -47,7 +48,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         final net = income - spent;
         final savingsRate = income <= 0 ? 0.0 : (net / income) * 100;
         final totals = _categoryTotals(expenses);
-        final previous = DateTime(_month.year, _month.month - 1);
+        final previous = DateTime(
+          _month.year,
+          _month.month - 1,
+          controller.budgetCycleStartDay,
+        );
         final previousSpent = controller.spentForMonth(previous);
         final change = previousSpent <= 0 ? null : ((spent - previousSpent) / previousSpent) * 100;
         final biggest = expenses.isEmpty
@@ -55,7 +60,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             : expenses.reduce((a, b) => a.amount >= b.amount ? a : b);
         final days = _daysForAverage(_month);
         final dailyAverage = days == 0 ? 0.0 : spent / days;
-        final isCurrentMonth = _month.year == DateTime.now().year && _month.month == DateTime.now().month;
+        final isCurrentMonth = _month == controller.currentCycleStart;
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
@@ -63,19 +68,22 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             Row(
               children: [
                 IconButton.filledTonal(
-                  tooltip: 'Previous month',
+                  tooltip: 'Previous budget cycle',
                   onPressed: () => _moveMonth(-1),
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
                 Expanded(
                   child: Text(
-                    AppFormatters.month(_month),
+                    AppFormatters.dateRange(
+                      controller.budgetCycleStartFor(_month),
+                      controller.budgetCycleEndExclusiveFor(_month).subtract(const Duration(days: 1)),
+                    ),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
                 IconButton.filledTonal(
-                  tooltip: 'Next month',
+                  tooltip: 'Next budget cycle',
                   onPressed: isCurrentMonth ? null : () => _moveMonth(1),
                   icon: const Icon(Icons.chevron_right_rounded),
                 ),
@@ -194,6 +202,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               _BudgetPaceCard(
                 budget: controller.monthlyBudget,
                 spent: spent,
+                cycleProgress: controller.currentCycleProgress,
               ),
             ],
           ],
@@ -212,9 +221,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   int _daysForAverage(DateTime month) {
-    final now = DateTime.now();
-    if (month.year == now.year && month.month == now.month) return now.day;
-    return DateTime(month.year, month.month + 1, 0).day;
+    final controller = widget.controller;
+    final start = controller.budgetCycleStartFor(month);
+    final end = controller.budgetCycleEndExclusiveFor(month);
+    if (start == controller.currentCycleStart) {
+      return DateTime.now().difference(start).inDays + 1;
+    }
+    return end.difference(start).inDays;
   }
 }
 
@@ -279,19 +292,19 @@ class _ReportSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final changeText = change == null
-        ? 'No previous-month comparison yet.'
+        ? 'No previous-cycle comparison yet.'
         : change!.abs() < 0.5
-            ? 'Spending is about the same as last month.'
+            ? 'Spending is about the same as last cycle.'
             : change! > 0
-                ? 'Spending is ${change!.abs().toStringAsFixed(0)}% higher than last month.'
-                : 'Spending is ${change!.abs().toStringAsFixed(0)}% lower than last month.';
+                ? 'Spending is ${change!.abs().toStringAsFixed(0)}% higher than last cycle.'
+                : 'Spending is ${change!.abs().toStringAsFixed(0)}% lower than last cycle.';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Monthly report', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const Text('Budget cycle report', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 14),
             _SummaryLine(icon: Icons.compare_arrows_rounded, text: changeText),
             const SizedBox(height: 10),
@@ -302,7 +315,7 @@ class _ReportSummaryCard extends StatelessWidget {
             const SizedBox(height: 10),
             _SummaryLine(
               icon: Icons.receipt_long_rounded,
-              text: '$transactionCount total ${transactionCount == 1 ? 'transaction' : 'transactions'} this month.',
+              text: '$transactionCount total ${transactionCount == 1 ? 'transaction' : 'transactions'} this cycle.',
             ),
             if (biggest != null) ...[
               const SizedBox(height: 10),
@@ -434,14 +447,17 @@ class _CategoryBudgetReport extends StatelessWidget {
 class _BudgetPaceCard extends StatelessWidget {
   final double budget;
   final double spent;
+  final double cycleProgress;
 
-  const _BudgetPaceCard({required this.budget, required this.spent});
+  const _BudgetPaceCard({
+    required this.budget,
+    required this.spent,
+    required this.cycleProgress,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-    final monthProgress = now.day / daysInMonth;
+    final monthProgress = cycleProgress;
     final spendingProgress = budget <= 0 ? 0.0 : spent / budget;
     final onTrack = spendingProgress <= monthProgress + 0.08;
     final scheme = Theme.of(context).colorScheme;
@@ -474,7 +490,7 @@ class _BudgetPaceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    '${(monthProgress * 100).round()}% of the month has passed and you’ve used ${(spendingProgress * 100).round()}% of your budget.',
+                    '${(monthProgress * 100).round()}% of the budget cycle has passed and you’ve used ${(spendingProgress * 100).round()}% of your budget.',
                     style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
                   ),
                 ],
