@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/app_controller.dart';
+import '../services/drive_backup_service.dart';
 import '../utils/currencies.dart';
 import '../utils/formatters.dart';
 import 'categories.dart';
@@ -39,6 +40,119 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (value != null) await controller.setMonthlyBudget(value);
+  }
+
+  Future<void> _pickBudgetCycleStartDay(BuildContext context) async {
+    var selected = controller.budgetCycleStartDay;
+    final value = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Budget cycle start day'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Choose the day your personal money month starts. For example, choose 25 if salary arrives on the 25th.',
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                initialValue: selected,
+                decoration: const InputDecoration(labelText: 'Start day'),
+                items: [
+                  for (var day = 1; day <= 28; day++)
+                    DropdownMenuItem(value: day, child: Text('Day $day')),
+                ],
+                onChanged: (value) {
+                  if (value != null) setDialogState(() => selected = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Current cycle: ${AppFormatters.dateRange(controller.currentCycleStart, controller.currentCycleEndExclusive.subtract(const Duration(days: 1)))}',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (value != null) await controller.setBudgetCycleStartDay(value);
+  }
+
+  Future<void> _connectDrive(BuildContext context) async {
+    try {
+      await controller.connectDriveBackup();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Google Drive connected and first backup saved.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not connect Google Drive: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _backupNow(BuildContext context) async {
+    try {
+      await controller.backupNow();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup saved to Google Drive.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backup failed: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreDriveBackup(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Restore latest backup?'),
+        content: const Text(
+          'This replaces the financial data currently stored on this device with the newest Budget Tracker backup in Google Drive.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Restore')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final restored = await controller.restoreLatestDriveBackup();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(restored ? 'Latest Google Drive backup restored.' : 'No Google Drive backup was found.'),
+        ),
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _pickCurrency(BuildContext context) async {
@@ -137,7 +251,7 @@ class SettingsScreen extends StatelessWidget {
               Text('Privacy by design', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 12),
               const Text(
-                'Budget Tracker stores transactions, goals, categories and preferences locally on your device. Receipt text recognition runs on-device. This build contains no account system, advertising SDK, analytics SDK, or cloud sync. Optional budget alerts use local device notifications only.',
+                'Budget Tracker stores transactions, goals, categories and preferences locally on your device. Receipt text recognition runs on-device. If you explicitly connect Google Drive, the app can also store private backup snapshots in its Google Drive app-data area. This build contains no advertising or analytics SDK. Optional budget alerts use local device notifications only.',
                 style: TextStyle(height: 1.55),
               ),
               const SizedBox(height: 16),
@@ -181,6 +295,17 @@ class SettingsScreen extends StatelessWidget {
                   const Divider(height: 1, indent: 76),
                   ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                    leading: const _SettingsIcon(Icons.date_range_rounded),
+                    title: const Text('Budget cycle', style: TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      'Starts on day ${controller.budgetCycleStartDay} • ${AppFormatters.dateRange(controller.currentCycleStart, controller.currentCycleEndExclusive.subtract(const Duration(days: 1)))}',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _pickBudgetCycleStartDay(context),
+                  ),
+                  const Divider(height: 1, indent: 76),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                     leading: const _SettingsIcon(Icons.currency_exchange_rounded),
                     title: const Text('Currency', style: TextStyle(fontWeight: FontWeight.w800)),
                     subtitle: Text('${currency.code} • ${currency.name}'),
@@ -199,6 +324,119 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            const _SectionLabel('Google Drive backup'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: controller.driveBackupConnected
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const _SettingsIcon(Icons.cloud_done_outlined),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Connected', style: TextStyle(fontWeight: FontWeight.w900)),
+                                    Text(
+                                      controller.driveAccountEmail ?? 'Google Drive',
+                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<BackupFrequency>(
+                            initialValue: controller.backupFrequency,
+                            decoration: const InputDecoration(
+                              labelText: 'Automatic backup',
+                              helperText: 'Backs up only when data changed and the app is active.',
+                            ),
+                            items: BackupFrequency.values
+                                .map((item) => DropdownMenuItem(value: item, child: Text(item.label)))
+                                .toList(),
+                            onChanged: controller.backupInProgress
+                                ? null
+                                : (value) {
+                                    if (value != null) controller.setBackupFrequency(value);
+                                  },
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            controller.lastDriveBackupAt == null
+                                ? 'No successful backup yet.'
+                                : 'Last backup: ${AppFormatters.dateTime(controller.lastDriveBackupAt!)}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: controller.backupInProgress ? null : () => _backupNow(context),
+                                icon: const Icon(Icons.cloud_upload_outlined),
+                                label: const Text('Back up now'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: controller.backupInProgress ? null : () => _restoreDriveBackup(context),
+                                icon: const Icon(Icons.restore_rounded),
+                                label: const Text('Restore latest'),
+                              ),
+                              TextButton(
+                                onPressed: controller.backupInProgress
+                                    ? null
+                                    : () => controller.disconnectDriveBackup(),
+                                child: const Text('Disconnect'),
+                              ),
+                            ],
+                          ),
+                          if (controller.backupInProgress) ...[
+                            const SizedBox(height: 12),
+                            const LinearProgressIndicator(),
+                          ],
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const _SettingsIcon(Icons.add_to_drive_outlined),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Keep a private copy of your Budget Tracker data in your Google Drive app-data area.',
+                                  style: TextStyle(height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          if (controller.driveBackupConfigured)
+                            FilledButton.icon(
+                              onPressed: controller.backupInProgress ? null : () => _connectDrive(context),
+                              icon: const Icon(Icons.login_rounded),
+                              label: const Text('Connect Google Drive'),
+                            )
+                          else
+                            const Text(
+                              'Google Drive OAuth is not configured in this build. See README.md → Google Drive backup setup.',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                        ],
+                      ),
               ),
             ),
             const SizedBox(height: 24),
