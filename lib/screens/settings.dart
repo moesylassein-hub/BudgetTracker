@@ -7,6 +7,7 @@ import '../utils/budget_cycle.dart';
 import '../utils/currencies.dart';
 import '../utils/formatters.dart';
 import 'categories.dart';
+import 'import_transactions.dart';
 import 'recurring_transactions.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -501,6 +502,33 @@ class SettingsScreen extends StatelessWidget {
                             ),
                         ],
                       ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const _SectionLabel('Import data'),
+            Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                leading: const _SettingsIcon(Icons.move_to_inbox_rounded),
+                title: const Text(
+                  'Import CSV or Excel',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text(
+                  'Migrate transactions from Money Tracker by Paraga or another finance app',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ImportTransactionsScreen(
+                      controller: controller,
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 24),
