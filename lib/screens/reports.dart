@@ -1036,7 +1036,7 @@ class _SpendingTimelineCard extends StatelessWidget {
                   maxY: maxY,
                   gridData: FlGridData(
                     drawVerticalLine: false,
-                    horizontalInterval: maxY / 4,
+                    horizontalInterval: (maxY - minY) / 4,
                     getDrawingHorizontalLine: (value) => FlLine(
                       color: scheme.outlineVariant.withValues(alpha: 0.45),
                       strokeWidth: 1,
@@ -1074,7 +1074,7 @@ class _SpendingTimelineCard extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 48,
-                        interval: maxY / 4,
+                        interval: (maxY - minY) / 4,
                         getTitlesWidget: (value, meta) => Text(
                           AppFormatters.compactMoney(
                             value,
@@ -1292,7 +1292,7 @@ class _CashFlowChart extends StatelessWidget {
                   ),
                   gridData: FlGridData(
                     drawVerticalLine: false,
-                    horizontalInterval: maxY / 4,
+                    horizontalInterval: (maxY - minY) / 4,
                     getDrawingHorizontalLine: (value) => FlLine(
                       color: scheme.outlineVariant.withValues(alpha: 0.4),
                       strokeWidth: 1,
@@ -1310,7 +1310,7 @@ class _CashFlowChart extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 48,
-                        interval: maxY / 4,
+                        interval: (maxY - minY) / 4,
                         getTitlesWidget: (value, meta) => Text(
                           AppFormatters.compactMoney(
                             value,

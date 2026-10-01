@@ -229,7 +229,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final refund in [-100.0, -200.0, -300.0]) {
+  for (final refund in [-100.0, -200.0, -300.0, -99999999.0]) {
     testWidgets('charts and reports handle net spending ${100 + refund}', (
       tester,
     ) async {
