@@ -9,6 +9,7 @@ import 'package:budget_tracker/services/import_service.dart';
 import 'package:budget_tracker/services/local_storage_service.dart';
 import 'package:budget_tracker/services/notification_service.dart';
 import 'package:budget_tracker/widgets/transaction_card.dart';
+import 'package:budget_tracker/widgets/empty_spending_donut.dart';
 import 'package:budget_tracker/utils/formatters.dart';
 import 'package:budget_tracker/screens/add_transaction.dart';
 import 'package:budget_tracker/screens/reports.dart';
@@ -264,6 +265,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Spending breakdown'), findsOneWidget);
+      await tester.tap(find.text('Insights'));
+      await tester.pumpAndSettle();
       final line = tester.widget<LineChart>(find.byType(LineChart));
       expect(line.data.minY, lessThanOrEqualTo(100 + refund));
       expect(tester.takeException(), isNull);
@@ -281,7 +285,7 @@ void main() {
     });
   }
 
-  testWidgets('refund-only reports omit pies and largest purchase', (
+  testWidgets('refund-only reports show an empty ring and no largest purchase', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 2200));
@@ -295,6 +299,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(PieChart), findsNothing);
+    expect(find.byType(EmptySpendingDonut), findsOneWidget);
     expect(find.textContaining('Largest expense:'), findsNothing);
     expect(find.text(AppFormatters.money(-800)), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -303,10 +308,40 @@ void main() {
         home: Scaffold(body: ReportsScreen(controller: app)),
       ),
     );
-    await tester.tap(find.text('Categories'));
     await tester.pumpAndSettle();
+    expect(find.text('Spending breakdown'), findsOneWidget);
     expect(find.byType(PieChart), findsNothing);
+    expect(find.byType(EmptySpendingDonut), findsOneWidget);
     expect(find.text(AppFormatters.money(-800)), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final transactions in [
+    <Transaction>[],
+    [item('purchase', 800), item('refund', -800)],
+  ]) {
+    testWidgets('empty spending ring with ${transactions.length} transactions', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final app = await controller(MemoryStorage(transactions));
+      addTearDown(app.dispose);
+      for (final screen in [
+        StatisticsScreen(controller: app),
+        ReportsScreen(controller: app),
+      ]) {
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body: screen)));
+        await tester.pumpAndSettle();
+        expect(find.byType(PieChart), findsNothing);
+        expect(find.byType(EmptySpendingDonut), findsOneWidget);
+        final ring = tester.widget<EmptySpendingDonut>(
+          find.byType(EmptySpendingDonut),
+        );
+        expect(ring.netSpending, 0);
+        expect(find.text('No positive category spending'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
 }

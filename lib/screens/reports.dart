@@ -10,6 +10,7 @@ import '../controllers/app_controller.dart';
 import '../models/transaction.dart';
 import '../utils/app_categories.dart';
 import '../utils/formatters.dart';
+import '../widgets/empty_spending_donut.dart';
 
 enum ReportSection { overview, trends, categories }
 
@@ -25,7 +26,7 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   late DateTime _cycle;
   late int _cycleStartDay;
-  ReportSection _section = ReportSection.overview;
+  ReportSection _section = ReportSection.categories;
 
   @override
   void initState() {
@@ -98,9 +99,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             SegmentedButton<ReportSection>(
               segments: const [
                 ButtonSegment(
-                  value: ReportSection.overview,
-                  icon: Icon(Icons.space_dashboard_rounded),
-                  label: Text('Insights'),
+                  value: ReportSection.categories,
+                  icon: Icon(Icons.donut_large_rounded),
+                  label: Text('Categories'),
                 ),
                 ButtonSegment(
                   value: ReportSection.trends,
@@ -108,9 +109,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   label: Text('Trends'),
                 ),
                 ButtonSegment(
-                  value: ReportSection.categories,
-                  icon: Icon(Icons.donut_large_rounded),
-                  label: Text('Categories'),
+                  value: ReportSection.overview,
+                  icon: Icon(Icons.space_dashboard_rounded),
+                  label: Text('Insights'),
                 ),
               ],
               selected: {_section},
@@ -334,16 +335,20 @@ class _CategoriesReport extends StatelessWidget {
           subtitle: 'See which categories take the biggest share of this cycle',
         ),
         const SizedBox(height: 10),
-        if (totals.isEmpty)
-          const _EmptyReportCard(
-            icon: Icons.donut_large_rounded,
-            title: 'No category data yet',
-            text: 'Add expenses to unlock your spending breakdown.',
-          )
-        else if (totals.values.any((amount) => amount > 0))
+        if (totals.values.any((amount) => amount > 0))
           _EnhancedCategoryDonutCard(
             controller: controller,
             analysis: analysis,
+          )
+        else
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: EmptySpendingDonut(
+                netSpending: analysis.snapshot.spent,
+                currencyCode: controller.currencyCode,
+              ),
+            ),
           ),
         if (totals.isNotEmpty) ...[
           const Padding(

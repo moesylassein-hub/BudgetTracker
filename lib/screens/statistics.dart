@@ -5,6 +5,7 @@ import '../controllers/app_controller.dart';
 import '../models/transaction.dart';
 import '../utils/app_categories.dart';
 import '../utils/formatters.dart';
+import '../widgets/empty_spending_donut.dart';
 
 class StatisticsScreen extends StatefulWidget {
   final AppController controller;
@@ -145,9 +146,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
-            if (totals.isEmpty)
-              const _EmptyChart()
-            else
               Card(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
@@ -179,7 +177,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                             }).toList(),
                           ),
                         ),
-                      ),
+                      )
+                      else
+                        EmptySpendingDonut(
+                          netSpending: spent,
+                          currencyCode: controller.currencyCode,
+                        ),
                       const SizedBox(height: 14),
                       ...totals.entries.map(
                         (entry) => Padding(
@@ -507,32 +510,6 @@ class _BudgetPaceCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyChart extends StatelessWidget {
-  const _EmptyChart();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 38, horizontal: 22),
-        child: Column(
-          children: [
-            Icon(Icons.pie_chart_outline_rounded, size: 48, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 12),
-            const Text('Reports appear as you spend', style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            Text(
-              'Add a few expenses to see your category breakdown.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
