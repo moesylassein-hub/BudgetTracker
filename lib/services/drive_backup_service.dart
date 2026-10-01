@@ -110,7 +110,7 @@ class DriveBackupService {
       'name': fileName,
       'parents': ['appDataFolder'],
       'mimeType': 'application/json',
-      'appProperties': {'kind': 'budget_tracker_backup', 'schema': '1'},
+      'appProperties': {'kind': 'budget_tracker_backup', 'schema': '2'},
     });
     final data = jsonEncode(snapshot);
     final body = utf8.encode(
