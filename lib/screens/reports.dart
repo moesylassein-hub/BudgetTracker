@@ -2005,7 +2005,10 @@ class _ReportAnalysis {
 
   double get remainingDailyAllowance {
     if (!isCurrent || remainingDays <= 0) return 0;
-    final remaining = math.max(0.0, controller.monthlyBudget - snapshot.spent);
+    final remaining = math.max(
+      0.0,
+      controller.monthlyBudget - snapshot.spent,
+    ).toDouble();
     return remaining / remainingDays;
   }
 
