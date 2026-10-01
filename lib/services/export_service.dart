@@ -25,6 +25,8 @@ class ExportService {
         'Type',
         'Merchant',
         'Category',
+        'Ledger',
+        'Account',
         'Amount',
         'Currency',
         'Note',
@@ -74,6 +76,8 @@ class ExportService {
       TextCellValue('Type'),
       TextCellValue('Merchant'),
       TextCellValue('Category'),
+      TextCellValue('Ledger'),
+      TextCellValue('Account'),
       TextCellValue('Amount'),
       TextCellValue('Currency'),
       TextCellValue('Note'),
@@ -93,8 +97,12 @@ class ExportService {
         TextCellValue(item.type.label),
         TextCellValue(item.store),
         TextCellValue(item.category),
+        TextCellValue(item.ledger),
+        TextCellValue(item.account),
         DoubleCellValue(item.amount),
-        TextCellValue(currencyCode),
+        TextCellValue(
+          item.currencyCode.isEmpty ? currencyCode : item.currencyCode,
+        ),
         TextCellValue(item.note),
         TextCellValue(
           '${DateFormat('yyyy-MM-dd').format(cycleStart)} - '
@@ -108,10 +116,12 @@ class ExportService {
     transactionsSheet.setColumnWidth(2, 12);
     transactionsSheet.setColumnWidth(3, 28);
     transactionsSheet.setColumnWidth(4, 20);
-    transactionsSheet.setColumnWidth(5, 14);
-    transactionsSheet.setColumnWidth(6, 12);
-    transactionsSheet.setColumnWidth(7, 34);
-    transactionsSheet.setColumnWidth(8, 26);
+    transactionsSheet.setColumnWidth(5, 18);
+    transactionsSheet.setColumnWidth(6, 18);
+    transactionsSheet.setColumnWidth(7, 14);
+    transactionsSheet.setColumnWidth(8, 12);
+    transactionsSheet.setColumnWidth(9, 34);
+    transactionsSheet.setColumnWidth(10, 26);
 
     final totalIncome = transactions
         .where((item) => item.isIncome)
@@ -193,8 +203,10 @@ class ExportService {
       item.type.label,
       item.store,
       item.category,
+      item.ledger,
+      item.account,
       item.amount.toStringAsFixed(2),
-      currencyCode,
+      item.currencyCode.isEmpty ? currencyCode : item.currencyCode,
       item.note,
       '${DateFormat('yyyy-MM-dd').format(cycleStart)} - '
           '${DateFormat('yyyy-MM-dd').format(cycleEnd)}',
