@@ -74,6 +74,28 @@ class AppController extends ChangeNotifier {
   }
 
   List<Transaction> get transactions => List.unmodifiable(_transactions);
+
+  List<String> get ledgerOptions => _uniqueTransactionValues(
+        (item) => item.ledger,
+      );
+
+  List<String> get accountOptions => _uniqueTransactionValues(
+        (item) => item.account,
+      );
+
+  List<String> _uniqueTransactionValues(
+    String Function(Transaction item) selector,
+  ) {
+    final values = <String, String>{};
+    for (final transaction in _transactions) {
+      final value = selector(transaction).trim();
+      if (value.isEmpty) continue;
+      values.putIfAbsent(value.toLowerCase(), () => value);
+    }
+    final result = values.values.toList();
+    result.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
+  }
   List<BudgetCategory> get categories => List.unmodifiable(_categories);
   List<SavingsGoal> get goals => List.unmodifiable(_goals);
   List<RecurringTransaction> get recurringTransactions =>
