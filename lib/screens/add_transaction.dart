@@ -32,6 +32,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   late final TextEditingController _storeController;
   late final TextEditingController _amountController;
   late final TextEditingController _noteController;
+  late final TextEditingController _ledgerController;
+  late final TextEditingController _accountController;
+  late String _transactionCurrencyCode;
   late String _category;
   late DateTime _date;
   late TransactionType _type;
@@ -52,6 +55,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           : scan?.amount?.toStringAsFixed(decimalDigits) ?? '',
     );
     _noteController = TextEditingController(text: existing?.note ?? _scanNote(scan));
+    _ledgerController = TextEditingController(text: existing?.ledger ?? '');
+    _accountController = TextEditingController(text: existing?.account ?? '');
+    _transactionCurrencyCode =
+        existing?.currencyCode.isNotEmpty == true
+            ? existing!.currencyCode
+            : scan?.currencyCode ?? widget.controller.currencyCode;
     _category = _resolveInitialCategory(existing?.category ?? scan?.category);
     _date = existing?.date ?? scan?.date ?? DateTime.now();
   }
@@ -79,6 +88,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     _storeController.dispose();
     _amountController.dispose();
     _noteController.dispose();
+    _ledgerController.dispose();
+    _accountController.dispose();
     super.dispose();
   }
 
@@ -107,6 +118,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       if (result.amount != null) _amountController.text = result.amount!.toStringAsFixed(2);
       _category = _resolveInitialCategory(result.category);
       _date = result.date ?? _date;
+      if (result.currencyCode != null && result.currencyCode!.isNotEmpty) {
+        _transactionCurrencyCode = result.currencyCode!.toUpperCase();
+      }
       final note = _scanNote(result);
       if (note.isNotEmpty && _noteController.text.trim().isEmpty) _noteController.text = note;
     });
@@ -130,6 +144,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       category: _category,
       date: _date,
       note: _noteController.text.trim(),
+      ledger: _ledgerController.text.trim(),
+      account: _accountController.text.trim(),
+      currencyCode: _transactionCurrencyCode.trim().toUpperCase(),
       type: _type,
     );
     Navigator.pop(context, transaction);
@@ -139,7 +156,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final categories = widget.controller.categoriesForType(_type);
-    final currency = AppCurrencies.byCode(widget.controller.currencyCode);
+    final currency = AppCurrencies.byCode(_transactionCurrencyCode);
     final isExpense = _type == TransactionType.expense;
     return Scaffold(
       appBar: AppBar(
@@ -297,6 +314,55 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   ),
                   child: Text(AppFormatters.date(_date)),
                 ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _ledgerController,
+                textCapitalization: TextCapitalization.words,
+                maxLength: 50,
+                decoration: const InputDecoration(
+                  labelText: 'Ledger (optional)',
+                  hintText: 'e.g. My Wallet',
+                  prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _accountController,
+                textCapitalization: TextCapitalization.words,
+                maxLength: 50,
+                decoration: const InputDecoration(
+                  labelText: 'Account (optional)',
+                  hintText: 'e.g. Cash',
+                  prefixIcon: Icon(Icons.account_balance_outlined),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: AppCurrencies.values.any(
+                  (item) => item.code == _transactionCurrencyCode,
+                )
+                    ? _transactionCurrencyCode
+                    : widget.controller.currencyCode,
+                decoration: const InputDecoration(
+                  labelText: 'Currency',
+                  prefixIcon: Icon(Icons.currency_exchange_rounded),
+                ),
+                items: AppCurrencies.values
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item.code,
+                        child: Text('${item.code} • ${item.name}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _transactionCurrencyCode = value);
+                  }
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(
