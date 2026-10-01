@@ -102,12 +102,16 @@ void main() {
       expect(preview.ready[0].amount, 4233.33);
       expect(preview.ready[0].store, 'dumbbell!');
       expect(preview.ready[0].category, 'Housing');
-      expect(preview.ready[0].note, contains('Ledger: My Wallet'));
-      expect(preview.ready[0].note, contains('Account: Cash'));
-      expect(preview.ready[0].note, contains('Currency: EGP'));
+      expect(preview.ready[0].ledger, 'My Wallet');
+      expect(preview.ready[0].account, 'Cash');
+      expect(preview.ready[0].currencyCode, 'EGP');
+      expect(preview.ready[0].note, 'Housing');
 
       expect(preview.ready[2].category, 'Family');
-      expect(preview.ready[2].note, contains('Sub-category: Saqr'));
+      expect(preview.ready[2].note, 'Saqr');
+      expect(preview.ready[2].ledger, 'My Wallet');
+      expect(preview.ready[2].account, 'Cash');
+      expect(preview.ready[2].currencyCode, 'EGP');
     });
   });
 
@@ -193,8 +197,8 @@ void main() {
       expect(preview.ready, hasLength(2));
       expect(preview.ready[0].type, TransactionType.income);
       expect(preview.ready[1].type, TransactionType.expense);
-      expect(preview.ready[0].note, contains('Wallet: Bank'));
-      expect(preview.ready[0].note, contains('Currency: EGP'));
+      expect(preview.ready[0].ledger, 'Bank');
+      expect(preview.ready[0].currencyCode, 'EGP');
     });
 
     test('skips Money Tracker transfer rows', () {
