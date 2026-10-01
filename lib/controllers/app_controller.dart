@@ -232,6 +232,83 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
+  Future<void> importTransactions(
+    List<Transaction> transactions,
+  ) async {
+    if (transactions.isEmpty) return;
+
+    final imported = <Transaction>[];
+    var categoriesChanged = false;
+
+    for (var i = 0; i < transactions.length; i++) {
+      final item = transactions[i];
+      var requested = item.category.trim();
+      if (requested.isEmpty) {
+        requested =
+            item.isIncome ? 'Other Income' : 'Other';
+      }
+
+      BudgetCategory? matching;
+      for (final category in _categories) {
+        if (category.type == item.type &&
+            category.name.toLowerCase() == requested.toLowerCase()) {
+          matching = category;
+          break;
+        }
+      }
+
+      var resolvedName = matching?.name;
+      if (resolvedName == null) {
+        var candidate = requested;
+        var suffix = 2;
+        while (_categories.any(
+          (category) =>
+              category.name.toLowerCase() == candidate.toLowerCase() &&
+              category.type != item.type,
+        )) {
+          candidate =
+              requested + ' (' + item.type.label + (suffix == 2 ? '' : ' ' + suffix.toString()) + ')';
+          suffix++;
+        }
+
+        final category = BudgetCategory(
+          id: 'import-' +
+              item.type.name +
+              '-' +
+              DateTime.now().microsecondsSinceEpoch.toString() +
+              '-' +
+              i.toString(),
+          name: candidate,
+          iconKey: item.isIncome ? 'income' : 'category',
+          type: item.type,
+        );
+        _categories.add(category);
+        resolvedName = category.name;
+        categoriesChanged = true;
+      }
+
+      imported.add(
+        item.copyWith(
+          category: resolvedName,
+          id: 'imported-' +
+              DateTime.now().microsecondsSinceEpoch.toString() +
+              '-' +
+              i.toString(),
+        ),
+      );
+    }
+
+    await _storage.insertTransactions(imported);
+    if (categoriesChanged) {
+      await _storage.saveCategories(_categories);
+    }
+    _transactions.addAll(imported);
+    _sort();
+    notifyListeners();
+    await _checkBudgetAlerts();
+    await _markBackupDirty();
+  }
+
   Future<void> setMonthlyBudget(double value) async {
     if (value <= 0) return;
     await _storage.saveBudget(value);
