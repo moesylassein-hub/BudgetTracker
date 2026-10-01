@@ -163,6 +163,7 @@ class AppController extends ChangeNotifier {
     _sort();
     notifyListeners();
     await _checkBudgetAlerts();
+    await _markBackupDirty();
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
@@ -174,6 +175,7 @@ class AppController extends ChangeNotifier {
     _sort();
     notifyListeners();
     await _checkBudgetAlerts();
+    await _markBackupDirty();
   }
 
   Future<void> deleteTransaction(String id) async {
@@ -190,6 +192,7 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+    await _markBackupDirty();
   }
 
   Future<void> setMonthlyBudget(double value) async {
@@ -198,18 +201,21 @@ class AppController extends ChangeNotifier {
     _monthlyBudget = value;
     notifyListeners();
     await _checkBudgetAlerts();
+    await _markBackupDirty();
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     await _storage.saveThemeMode(mode);
     _themeMode = mode;
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> setCurrencyCode(String code) async {
     await _storage.saveCurrencyCode(code);
     _currencyCode = code;
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<bool> setBudgetAlertsEnabled(bool enabled) async {
@@ -239,6 +245,7 @@ class AppController extends ChangeNotifier {
     _categories.add(category);
     await _storage.saveCategories(_categories);
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> updateCategory(BudgetCategory category) async {
@@ -257,6 +264,7 @@ class AppController extends ChangeNotifier {
     await _storage.saveCategories(_categories);
     notifyListeners();
     await _checkBudgetAlerts();
+    await _markBackupDirty();
   }
 
   Future<bool> deleteCategory(String id) async {
@@ -268,6 +276,7 @@ class AppController extends ChangeNotifier {
     _categories.removeWhere((item) => item.id == id);
     await _storage.saveCategories(_categories);
     notifyListeners();
+    await _markBackupDirty();
     return true;
   }
 
@@ -275,6 +284,7 @@ class AppController extends ChangeNotifier {
     _goals.add(goal);
     await _storage.saveGoals(_goals);
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> updateGoal(SavingsGoal goal) async {
@@ -283,12 +293,14 @@ class AppController extends ChangeNotifier {
     _goals[index] = goal;
     await _storage.saveGoals(_goals);
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> deleteGoal(String id) async {
     _goals.removeWhere((item) => item.id == id);
     await _storage.saveGoals(_goals);
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> changeGoalSavings(String id, double delta) async {
@@ -299,6 +311,7 @@ class AppController extends ChangeNotifier {
     _goals[index] = current.copyWith(savedAmount: next);
     await _storage.saveGoals(_goals);
     notifyListeners();
+    await _markBackupDirty();
   }
 
   Future<void> clearAllData() async {
