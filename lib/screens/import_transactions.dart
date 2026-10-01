@@ -655,14 +655,26 @@ class _PreviewTransactions extends StatelessWidget {
   }
 }
 
-class _WarningCard extends StatelessWidget {
+class _WarningCard extends StatefulWidget {
   final List<String> warnings;
 
   const _WarningCard({required this.warnings});
 
   @override
+  State<_WarningCard> createState() => _WarningCardState();
+}
+
+class _WarningCardState extends State<_WarningCard> {
+  bool _showAll = false;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final canCollapse = widget.warnings.length > 5;
+    final visibleWarnings = _showAll || !canCollapse
+        ? widget.warnings
+        : widget.warnings.take(5).toList();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -673,14 +685,16 @@ class _WarningCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Rows that need attention',
+            'Rows that need attention (' +
+                widget.warnings.length.toString() +
+                ')',
             style: TextStyle(
               color: scheme.onErrorContainer,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 8),
-          for (final warning in warnings)
+          for (final warning in visibleWarnings)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
@@ -688,6 +702,29 @@ class _WarningCard extends StatelessWidget {
                 style: TextStyle(color: scheme.onErrorContainer),
               ),
             ),
+          if (canCollapse) ...[
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: () => setState(() => _showAll = !_showAll),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onErrorContainer,
+                padding: EdgeInsets.zero,
+              ),
+              icon: Icon(
+                _showAll
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+              ),
+              label: Text(
+                _showAll
+                    ? 'Show less'
+                    : 'Show all ' +
+                        widget.warnings.length.toString() +
+                        ' rows',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
         ],
       ),
     );
