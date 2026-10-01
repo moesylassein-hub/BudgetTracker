@@ -33,9 +33,9 @@ void main() {
       expect(
         rule.dueDatesThrough(DateTime(2026, 11, 30)),
         [
-          DateTime(2026, 9, 25, 12),
-          DateTime(2026, 10, 25, 12),
-          DateTime(2026, 11, 25, 12),
+          DateTime(2026, 9, 25),
+          DateTime(2026, 10, 25),
+          DateTime(2026, 11, 25),
         ],
       );
 
@@ -44,7 +44,7 @@ void main() {
       );
       expect(
         processed.dueDatesThrough(DateTime(2026, 11, 30)),
-        [DateTime(2026, 11, 25, 12)],
+        [DateTime(2026, 11, 25)],
       );
     });
 
@@ -57,9 +57,9 @@ void main() {
       expect(
         rule.dueDatesThrough(DateTime(2027, 3, 31)),
         [
-          DateTime(2027, 1, 31, 12),
-          DateTime(2027, 2, 28, 12),
-          DateTime(2027, 3, 31, 12),
+          DateTime(2027, 1, 31),
+          DateTime(2027, 2, 28),
+          DateTime(2027, 3, 31),
         ],
       );
     });
@@ -73,8 +73,8 @@ void main() {
       expect(
         rule.dueDatesThrough(DateTime(2028, 2, 29)),
         [
-          DateTime(2028, 1, 31, 12),
-          DateTime(2028, 2, 29, 12),
+          DateTime(2028, 1, 31),
+          DateTime(2028, 2, 29),
         ],
       );
     });
@@ -87,8 +87,8 @@ void main() {
       expect(
         rule.dueDatesThrough(DateTime(2027, 1, 1)),
         [
-          DateTime(2026, 9, 25, 12),
-          DateTime(2026, 10, 25, 12),
+          DateTime(2026, 9, 25),
+          DateTime(2026, 10, 25),
         ],
       );
     });
