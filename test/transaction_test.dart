@@ -10,6 +10,9 @@ void main() {
       category: 'Freelance',
       date: DateTime(2026, 8, 21),
       note: 'Test note',
+      ledger: 'Main Wallet',
+      account: 'Bank',
+      currencyCode: 'USD',
       type: TransactionType.income,
     );
 
@@ -21,6 +24,9 @@ void main() {
     expect(restored.category, original.category);
     expect(restored.date, original.date);
     expect(restored.note, original.note);
+    expect(restored.ledger, original.ledger);
+    expect(restored.account, original.account);
+    expect(restored.currencyCode, original.currencyCode);
     expect(restored.type, TransactionType.income);
   });
 
@@ -35,5 +41,8 @@ void main() {
     });
 
     expect(restored.type, TransactionType.expense);
+    expect(restored.ledger, isEmpty);
+    expect(restored.account, isEmpty);
+    expect(restored.currencyCode, isEmpty);
   });
 }
