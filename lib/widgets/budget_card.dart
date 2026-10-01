@@ -6,12 +6,14 @@ class BudgetCard extends StatelessWidget {
   final double budget;
   final double spent;
   final String currencyCode;
+  final String periodLabel;
 
   const BudgetCard({
     super.key,
     required this.budget,
     required this.spent,
     required this.currencyCode,
+    required this.periodLabel,
   });
 
   @override
@@ -49,7 +51,7 @@ class BudgetCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Monthly budget',
+                'Budget cycle',
                 style: TextStyle(
                   color: scheme.onPrimary.withValues(alpha: 0.82),
                   fontWeight: FontWeight.w700,
@@ -62,7 +64,7 @@ class BudgetCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  AppFormatters.month(DateTime.now()),
+                  periodLabel,
                   style: TextStyle(
                     color: scheme.onPrimary,
                     fontSize: 12,
