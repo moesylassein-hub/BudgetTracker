@@ -175,6 +175,13 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
     }
   }
 
+  bool _hasCurrencyWarning(ImportPreview preview) {
+    if (preview.sourceCurrencies.isEmpty) return false;
+    if (preview.sourceCurrencies.length > 1) return true;
+    return preview.sourceCurrencies.single.toUpperCase() !=
+        widget.controller.currencyCode.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final table = _table;
@@ -205,6 +212,13 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
           if (preview != null) ...[
             const SizedBox(height: 18),
             _PreviewSummary(preview: preview),
+            if (_hasCurrencyWarning(preview)) ...[
+              const SizedBox(height: 12),
+              _CurrencyWarning(
+                currencies: preview.sourceCurrencies,
+                appCurrency: widget.controller.currencyCode,
+              ),
+            ],
             if (preview.ready.isNotEmpty) ...[
               const SizedBox(height: 18),
               _PreviewTransactions(
@@ -411,7 +425,7 @@ class _MappingCard extends StatelessWidget {
               label: 'Date',
               value: mapping.date,
               headers: table.headers,
-              required: true,
+              isRequired: true,
               onChanged: (value) => onChanged(_MappingField.date, value),
             ),
             const SizedBox(height: 10),
@@ -472,7 +486,7 @@ class _ColumnDropdown extends StatelessWidget {
   final String label;
   final int? value;
   final List<String> headers;
-  final bool required;
+  final bool isRequired;
   final ValueChanged<int?> onChanged;
 
   const _ColumnDropdown({
@@ -480,7 +494,7 @@ class _ColumnDropdown extends StatelessWidget {
     required this.value,
     required this.headers,
     required this.onChanged,
-    this.required = false,
+    this.isRequired = false,
   });
 
   @override
@@ -489,7 +503,7 @@ class _ColumnDropdown extends StatelessWidget {
       initialValue: value ?? -1,
       isExpanded: true,
       decoration: InputDecoration(
-        labelText: required ? label + ' *' : label,
+        labelText: isRequired ? label + ' *' : label,
       ),
       items: [
         const DropdownMenuItem<int>(
@@ -669,6 +683,54 @@ class _WarningCard extends StatelessWidget {
                 style: TextStyle(color: scheme.onErrorContainer),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrencyWarning extends StatelessWidget {
+  final Set<String> currencies;
+  final String appCurrency;
+
+  const _CurrencyWarning({
+    required this.currencies,
+    required this.appCurrency,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final source = currencies.toList()..sort();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.currency_exchange_rounded,
+            color: scheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Source currency: ' +
+                  source.join(', ') +
+                  '. Budget Tracker currently displays ' +
+                  appCurrency +
+                  ' and does not convert exchange rates during import. '
+                  'Original currency and wallet names are preserved in the note.',
+              style: TextStyle(
+                color: scheme.onTertiaryContainer,
+                height: 1.4,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
