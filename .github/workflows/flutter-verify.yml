@@ -43,3 +43,5 @@ jobs:
         run: flutter test
       - name: Build debug APK
         run: flutter build apk --debug
+      - name: Build release APK
+        run: flutter build apk --release
