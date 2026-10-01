@@ -18,16 +18,18 @@ Future<void> main() async {
   ]);
 
   final notifications = NotificationService();
-  await notifications.initialize();
   final driveBackup = DriveBackupService();
-  await driveBackup.initialize();
   final controller = await AppController.create(
     LocalStorageService(),
     notifications,
     driveBackup,
   );
+
+  // Render the first Flutter frame before optional services such as
+  // Google Sign-In or notifications initialize. A slow Google service on a
+  // physical device must never leave the app stuck on the Android splash.
   runApp(BudgetTrackerApp(controller: controller));
-  unawaited(controller.maybeAutoBackup());
+  unawaited(controller.finishStartup());
 }
 
 class BudgetTrackerApp extends StatefulWidget {
