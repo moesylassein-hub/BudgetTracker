@@ -6,11 +6,12 @@ A production-oriented Flutter budget tracker for Android with income and expense
 
 - Income and expense tracking with separate categories
 - Built-in income categories for Salary, Freelance, Refunds, Gifts, and Other Income
-- Monthly budget dashboard with spent/remaining progress
+- Custom budget cycles: choose day 1–28 so your money month can follow your salary date
+- Budget-cycle dashboard with spent/remaining progress
 - Optional category budgets for expense categories
 - Optional local budget notifications at 50%, 80%, and 100% of the monthly budget, plus exceeded category limits
 - Savings goals with visual progress and add/withdraw controls
-- Monthly reports with income, spending, net savings, savings rate, comparisons, category charts, and budget status
+- Budget-cycle reports with income, spending, net savings, savings rate, comparisons, category charts, and budget status
 - Calendar view for daily activity
 - Custom categories with editable names, icons, and expense-category budgets
 - Currency display settings: EGP, USD, EUR, SAR, AED, GBP, and KWD
@@ -20,7 +21,8 @@ A production-oriented Flutter budget tracker for Android with income and expense
 - Search, type/category filters, edit, swipe delete, and Undo delete
 - SQLite transaction persistence plus local preference storage for goals/settings/categories
 - System, light, and dark themes
-- No ad SDK, analytics SDK, account system, or cloud sync
+- Optional Google Drive backups using the private app-data scope; Off/Daily/Weekly/Monthly schedules plus manual backup/restore
+- No ad SDK or analytics SDK
 - Android target/compile SDK 36
 
 ## Recommended toolchain
@@ -62,9 +64,28 @@ The bundle will be at `build/app/outputs/bundle/release/app-release.aab`.
 
 Verify this before your first Play Store upload. The application ID cannot be changed for an existing Play listing.
 
+## Google Drive backup setup
+
+Drive backup uses the narrow `drive.appdata` OAuth scope so Budget Tracker cannot browse the user's normal Drive files.
+
+1. Create or select a Google Cloud project.
+2. Enable **Google Drive API**.
+3. Configure the OAuth consent screen.
+4. Register an Android OAuth client for package `com.smartbudget.tracker` with the SHA-1 fingerprints for the signing keys you use.
+5. Create a Web OAuth client ID and use that value as the server client ID.
+6. Build/run with:
+
+```bash
+flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+```
+
+Use the same `--dart-define` for release builds. Without it the rest of the app works normally, but Settings shows Drive backup as not configured.
+
+Automatic backup defaults to **Daily** after the user connects. It only uploads when local data changed and the app is active, and it retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
+
 ## Privacy
 
-The release app does not request Internet access. Financial entries, goals, categories, budgets, and preferences remain on-device. Receipt OCR is performed on-device. Optional budget alerts use local Android notifications and request notification permission only after the user enables the feature.
+The release app requests Internet access for the optional Google Drive backup feature. Financial entries remain local unless the user explicitly connects Google Drive. Receipt OCR is still performed on-device. Optional budget alerts use local Android notifications and request notification permission only after the user enables the feature.
 
 Currency switching is display-only: changing from EGP to USD/EUR/etc. does not convert existing numeric amounts using exchange rates.
 
