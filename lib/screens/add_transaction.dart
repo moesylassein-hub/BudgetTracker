@@ -32,8 +32,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   late final TextEditingController _storeController;
   late final TextEditingController _amountController;
   late final TextEditingController _noteController;
-  late final TextEditingController _ledgerController;
-  late final TextEditingController _accountController;
+  late List<String> _ledgerOptions;
+  late List<String> _accountOptions;
+  late String _ledger;
+  late String _account;
   late String _transactionCurrencyCode;
   late String _category;
   late DateTime _date;
@@ -55,14 +57,124 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           : scan?.amount?.toStringAsFixed(decimalDigits) ?? '',
     );
     _noteController = TextEditingController(text: existing?.note ?? _scanNote(scan));
-    _ledgerController = TextEditingController(text: existing?.ledger ?? '');
-    _accountController = TextEditingController(text: existing?.account ?? '');
+    _ledger = existing?.ledger.trim() ?? '';
+    _account = existing?.account.trim() ?? '';
+    _ledgerOptions = _withCurrent(
+      widget.controller.ledgerOptions,
+      _ledger,
+    );
+    _accountOptions = _withCurrent(
+      widget.controller.accountOptions,
+      _account,
+    );
     _transactionCurrencyCode =
         existing?.currencyCode.isNotEmpty == true
             ? existing!.currencyCode
             : scan?.currencyCode ?? widget.controller.currencyCode;
     _category = _resolveInitialCategory(existing?.category ?? scan?.category);
     _date = existing?.date ?? scan?.date ?? DateTime.now();
+  }
+
+  static const _addLedgerValue = '__add_new_ledger__';
+  static const _addAccountValue = '__add_new_account__';
+
+  List<String> _withCurrent(List<String> values, String current) {
+    final result = <String>[];
+    final seen = <String>{};
+    for (final value in [...values, current]) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) continue;
+      if (seen.add(trimmed.toLowerCase())) result.add(trimmed);
+    }
+    result.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
+  }
+
+  String _addUniqueOption(List<String> options, String value) {
+    final trimmed = value.trim();
+    for (final option in options) {
+      if (option.toLowerCase() == trimmed.toLowerCase()) return option;
+    }
+    options.add(trimmed);
+    options.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return trimmed;
+  }
+
+  Future<String?> _askForNewOption({
+    required String title,
+    required String hint,
+  }) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          maxLength: 50,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: (value) {
+            final trimmed = value.trim();
+            if (trimmed.isNotEmpty) Navigator.pop(dialogContext, trimmed);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final trimmed = controller.text.trim();
+              if (trimmed.isNotEmpty) Navigator.pop(dialogContext, trimmed);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result?.trim();
+  }
+
+  Future<void> _changeLedger(String? value) async {
+    if (value == null) return;
+    if (value != _addLedgerValue) {
+      setState(() => _ledger = value);
+      return;
+    }
+
+    final added = await _askForNewOption(
+      title: 'Add ledger',
+      hint: 'e.g. My Wallet',
+    );
+    if (!mounted) return;
+    if (added == null || added.isEmpty) {
+      setState(() {});
+      return;
+    }
+    setState(() => _ledger = _addUniqueOption(_ledgerOptions, added));
+  }
+
+  Future<void> _changeAccount(String? value) async {
+    if (value == null) return;
+    if (value != _addAccountValue) {
+      setState(() => _account = value);
+      return;
+    }
+
+    final added = await _askForNewOption(
+      title: 'Add account',
+      hint: 'e.g. Cash',
+    );
+    if (!mounted) return;
+    if (added == null || added.isEmpty) {
+      setState(() {});
+      return;
+    }
+    setState(() => _account = _addUniqueOption(_accountOptions, added));
   }
 
   String _scanNote(ReceiptScanResult? scan) {
@@ -88,8 +200,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     _storeController.dispose();
     _amountController.dispose();
     _noteController.dispose();
-    _ledgerController.dispose();
-    _accountController.dispose();
     super.dispose();
   }
 
@@ -144,8 +254,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       category: _category,
       date: _date,
       note: _noteController.text.trim(),
-      ledger: _ledgerController.text.trim(),
-      account: _accountController.text.trim(),
+      ledger: _ledger,
+      account: _account,
       currencyCode: _transactionCurrencyCode.trim().toUpperCase(),
       type: _type,
     );
@@ -316,28 +426,80 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _ledgerController,
-                textCapitalization: TextCapitalization.words,
-                maxLength: 50,
+              DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'ledger-' + _ledger + '-' + _ledgerOptions.length.toString(),
+                ),
+                initialValue: _ledger,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Ledger (optional)',
-                  hintText: 'e.g. My Wallet',
                   prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                  counterText: '',
                 ),
+                items: [
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Not set'),
+                  ),
+                  ..._ledgerOptions.map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(
+                        item,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const DropdownMenuItem(
+                    value: _addLedgerValue,
+                    child: Row(
+                      children: [
+                        Icon(Icons.add_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Text('Add new ledger…'),
+                      ],
+                    ),
+                  ),
+                ],
+                onChanged: _changeLedger,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _accountController,
-                textCapitalization: TextCapitalization.words,
-                maxLength: 50,
+              DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'account-' + _account + '-' + _accountOptions.length.toString(),
+                ),
+                initialValue: _account,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Account (optional)',
-                  hintText: 'e.g. Cash',
                   prefixIcon: Icon(Icons.account_balance_outlined),
-                  counterText: '',
                 ),
+                items: [
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Not set'),
+                  ),
+                  ..._accountOptions.map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(
+                        item,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const DropdownMenuItem(
+                    value: _addAccountValue,
+                    child: Row(
+                      children: [
+                        Icon(Icons.add_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Text('Add new account…'),
+                      ],
+                    ),
+                  ),
+                ],
+                onChanged: _changeAccount,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
