@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/app_controller.dart';
 import '../services/drive_backup_service.dart';
+import '../utils/budget_cycle.dart';
 import '../utils/currencies.dart';
 import '../utils/formatters.dart';
 import 'categories.dart';
@@ -61,7 +62,7 @@ class SettingsScreen extends StatelessWidget {
                 initialValue: selected,
                 decoration: const InputDecoration(labelText: 'Start day'),
                 items: [
-                  for (var day = 1; day <= 28; day++)
+                  for (var day = 1; day <= 31; day++)
                     DropdownMenuItem(value: day, child: Text('Day $day')),
                 ],
                 onChanged: (value) {
@@ -69,9 +70,16 @@ class SettingsScreen extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 12),
-              Text(
-                'Current cycle: ${AppFormatters.dateRange(controller.currentCycleStart, controller.currentCycleEndExclusive.subtract(const Duration(days: 1)))}',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              Builder(
+                builder: (context) {
+                  final previewStart = BudgetCycle.startFor(DateTime.now(), selected);
+                  final previewEnd = BudgetCycle.endExclusiveFor(DateTime.now(), selected)
+                      .subtract(const Duration(days: 1));
+                  return Text(
+                    'Preview: ${AppFormatters.dateRange(previewStart, previewEnd)}',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  );
+                },
               ),
             ],
           ),
