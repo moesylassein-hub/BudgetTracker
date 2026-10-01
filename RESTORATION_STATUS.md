@@ -1,42 +1,54 @@
 # Budget Tracker restoration status
 
-## Verified inputs
+## Status
 
-- Compiled Android APK is being treated as the behavioral source of truth.
-- A surviving Flutter `app.dill` debug artifact was recovered from the uploaded project archive.
-- The `app.dill` contains embedded source text for all 25 project Dart files.
-- Those 25 recovered Dart files match the uploaded older-source ZIP byte-for-byte.
-- APK AOT symbol inspection maps the same app-specific private classes and methods to those 25 files; no additional app Dart file paths were found.
+**Restoration complete and build-verified.**
 
-## Recovered Dart files
+The compiled Android APK was treated as the behavioral source of truth, with the surviving Flutter source/build artifacts used as the reconstruction base.
 
-- `lib/main.dart`
-- `lib/controllers/app_controller.dart`
-- Models: budget category, receipt scan result, savings goal, transaction
-- Screens: add transaction, categories, dashboard, home shell, savings goals, scan receipt, settings, statistics, transactions
-- Services: local storage, notifications, OCR, receipt parser
-- Theme, currency/category/formatter utilities
-- Budget and transaction widgets
+## Recovery evidence
 
-## APK features already identified
+- A surviving Flutter `app.dill` debug artifact exposed source text for all 25 project Dart files.
+- Those recovered Dart files matched the uploaded source archive byte-for-byte where expected.
+- APK AOT inspection referenced the same app-specific Dart file set; no additional app Dart source paths were found.
+- APK manifest inspection confirmed package `com.smartbudget.tracker`, app label `Budget Tracker`, and version name `1.0.0`.
+- The repository keeps version `1.0.0+1` to match the recovered APK rather than the source archive's later 1.1.0 label.
+
+## Reconstructed app coverage
 
 - Expense and income transactions
+- Add, edit, delete, and undo transaction flows
+- Search and category/type filtering
 - Monthly budgets and category budgets
-- Budget alerts at 50%, 80%, 100%, and category-limit alerts
+- Budget alerts at 50%, 80%, 100%, plus category-limit alerts
 - Savings goals and savings adjustments
-- Monthly reporting/statistics
+- Statistics and monthly reporting
 - Calendar activity view
-- Search/filtering and transaction edit/delete/undo
 - Receipt scanning with on-device Google ML Kit OCR
+- Camera and gallery receipt input
 - Receipt parsing for merchant, total, date, currency, tax, receipt number, and category
-- Camera/gallery receipt input
 - Custom expense/income categories and icons
 - Currency selection
-- System/light/dark themes
+- System, light, and dark themes
 - Android quick actions for adding expense/income and scanning receipts
-- SQLite migration preserving older transactions
-- Local-first privacy/data-clear flow
+- SQLite storage and legacy transaction migration
+- Local-first privacy information and clear-local-data flow
 
-## Important
+## Android/project reconstruction
 
-Matching filenames and method names do not prove the older source is behaviorally identical to the APK. UI/layout values, branches inside methods, validation, copy, defaults, and smaller interactions can differ without introducing new method names. The APK therefore remains the reference for reconstruction and verification.
+The repo includes the normal Flutter/Android project structure, Gradle configuration, Android manifests/resources, tests, release helper scripts, and CI verification. A duplicate Kotlin activity recovered from the archive was intentionally not kept because the Android project already uses the Java `MainActivity`; keeping both causes a duplicate-class build failure.
+
+## Build verification
+
+GitHub Actions successfully completed all of the following on the reconstructed project:
+
+1. `flutter pub get`
+2. `flutter analyze`
+3. `flutter test`
+4. `flutter build apk --debug`
+
+The successful verification run was produced after the APK version was aligned and the duplicate Android activity was removed.
+
+## Remaining limitation
+
+A compiled APK cannot prove original comments, formatting, local variable names, or every source-level implementation detail. The restored repository therefore aims to reproduce the APK's observable features and behavior while preserving exact recovered source wherever it survived.
