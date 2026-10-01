@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/app_controller.dart';
 import '../services/drive_backup_service.dart';
+import '../services/export_service.dart';
 import '../utils/budget_cycle.dart';
 import '../utils/currencies.dart';
 import '../utils/formatters.dart';
@@ -158,6 +159,38 @@ class SettingsScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Restore failed: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportExcel(BuildContext context) async {
+    try {
+      await const ExportService().shareExcel(
+        transactions: controller.transactions,
+        currencyCode: controller.currencyCode,
+        budgetCycleStartDay: controller.budgetCycleStartDay,
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Excel export failed: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportCsv(BuildContext context) async {
+    try {
+      await const ExportService().shareCsv(
+        transactions: controller.transactions,
+        currencyCode: controller.currencyCode,
+        budgetCycleStartDay: controller.budgetCycleStartDay,
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CSV export failed: $error')),
         );
       }
     }
@@ -445,6 +478,56 @@ class SettingsScreen extends StatelessWidget {
                             ),
                         ],
                       ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const _SectionLabel('Export data'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        _SettingsIcon(Icons.table_view_rounded),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Open your transactions in Excel or Google Sheets.',
+                            style: TextStyle(height: 1.4, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Exports are readable reports, not restore backups. Each row includes its budget-cycle range.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => _exportExcel(context),
+                          icon: const Icon(Icons.grid_on_rounded),
+                          label: const Text('Export Excel (.xlsx)'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _exportCsv(context),
+                          icon: const Icon(Icons.description_outlined),
+                          label: const Text('Export CSV'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 24),
