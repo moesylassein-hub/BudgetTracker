@@ -81,7 +81,11 @@ flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.google
 
 Use the same `--dart-define` for release builds. Without it the rest of the app works normally, but Settings shows Drive backup as not configured.
 
-Automatic backup defaults to **Daily** after the user connects. It only uploads when local data changed and the app is active, and it retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
+Automatic backup defaults to **Daily (recommended)** after the user connects. It only uploads when local data changed and the app is active, so it avoids unnecessary Drive writes. It retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
+
+## Salary / budget cycles
+
+Budget cycles can start on any day from 1 to 31. If salary arrives on the 25th, set **Settings → Budget cycle → Day 25**; a cycle such as September 25–October 24 is then used consistently for the dashboard, budget limits, alerts, statistics, comparisons, and category budgets. For start days 29–31, shorter months automatically use that month's final valid day.
 
 ## Privacy
 
