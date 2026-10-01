@@ -11,7 +11,7 @@ import 'dashboard.dart';
 import 'savings_goals.dart';
 import 'scan_receipt.dart';
 import 'settings.dart';
-import 'statistics.dart';
+import 'reports.dart';
 import 'transactions.dart';
 
 class HomeShell extends StatefulWidget {
@@ -162,12 +162,12 @@ class _HomeShellState extends State<HomeShell> {
         controller: widget.controller,
         onEdit: _editTransaction,
       ),
-      StatisticsScreen(controller: widget.controller),
+      ReportsScreen(controller: widget.controller),
       SavingsGoalsScreen(controller: widget.controller),
       SettingsScreen(controller: widget.controller),
     ];
 
-    const titles = ['Overview', 'Activity', 'Monthly reports', 'Savings goals', 'Settings'];
+    const titles = ['Overview', 'Activity', 'Reports', 'Savings goals', 'Settings'];
 
     return Scaffold(
       appBar: AppBar(
