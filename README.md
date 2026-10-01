@@ -87,6 +87,17 @@ Automatic backup defaults to **Daily (recommended)** after the user connects. It
 
 Budget cycles can start on any day from 1 to 31. If salary arrives on the 25th, set **Settings → Budget cycle → Day 25**; a cycle such as September 25–October 24 is then used consistently for the dashboard, budget limits, alerts, statistics, comparisons, and category budgets. For start days 29–31, shorter months automatically use that month's final valid day.
 
+## Excel and CSV export
+
+Settings → **Export data** provides two human-readable exports:
+
+- **Excel (.xlsx):** includes a Transactions sheet plus a Summary sheet with total income, expenses, net, currency, transaction count, and budget-cycle start day.
+- **CSV:** includes all transactions in a format that opens in Excel, Google Sheets, and other spreadsheet apps.
+
+Both formats include the budget-cycle range that each transaction belongs to. Android's share/save sheet is used, so the file can be saved locally, sent to another app, or placed in Drive.
+
+These exports are **not** app restore files. Google Drive backup uses the private JSON snapshot format because it preserves the app's complete data/settings for reliable restoration.
+
 ## Privacy
 
 The release app requests Internet access for the optional Google Drive backup feature. Financial entries remain local unless the user explicitly connects Google Drive. Receipt OCR is still performed on-device. Optional budget alerts use local Android notifications and request notification permission only after the user enables the feature.
