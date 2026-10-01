@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' hide Transaction;
 
 import '../models/budget_category.dart';
+import '../models/recurring_transaction.dart';
 import '../models/savings_goal.dart';
 import '../models/transaction.dart';
 
@@ -19,6 +20,7 @@ class LocalStorageService {
   static const _currencyKey = 'currency_code_v1';
   static const _categoriesKey = 'categories_v1';
   static const _goalsKey = 'savings_goals_v1';
+  static const _recurringTransactionsKey = 'recurring_transactions_v1';
   static const _alertsEnabledKey = 'budget_alerts_enabled_v1';
   static const _budgetCycleStartDayKey = 'budget_cycle_start_day_v1';
   static const _backupFrequencyKey = 'drive_backup_frequency_v1';
@@ -189,6 +191,37 @@ class LocalStorageService {
     );
   }
 
+
+  Future<List<RecurringTransaction>> loadRecurringTransactions() async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_recurringTransactionsKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) => RecurringTransaction.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .where((item) => item.amount > 0)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveRecurringTransactions(
+    List<RecurringTransaction> transactions,
+  ) async {
+    final prefs = await _prefs;
+    await prefs.setString(
+      _recurringTransactionsKey,
+      jsonEncode(transactions.map((item) => item.toJson()).toList()),
+    );
+  }
+
   Future<bool> loadBudgetAlertsEnabled() async {
     final prefs = await _prefs;
     return prefs.getBool(_alertsEnabledKey) ?? false;
@@ -303,6 +336,13 @@ class LocalStorageService {
     final rawGoals = data['goals'] as List<dynamic>? ?? const [];
     await prefs.setString(_goalsKey, jsonEncode(rawGoals));
 
+    final rawRecurring =
+        data['recurringTransactions'] as List<dynamic>? ?? const [];
+    await prefs.setString(
+      _recurringTransactionsKey,
+      jsonEncode(rawRecurring),
+    );
+
     await prefs.setBool(
       _alertsEnabledKey,
       data['budgetAlertsEnabled'] as bool? ?? false,
@@ -324,6 +364,7 @@ class LocalStorageService {
     await prefs.remove(_currencyKey);
     await prefs.remove(_categoriesKey);
     await prefs.remove(_goalsKey);
+    await prefs.remove(_recurringTransactionsKey);
     await prefs.remove(_alertsEnabledKey);
     await prefs.remove(_budgetCycleStartDayKey);
     for (final key in prefs.getKeys().where((key) => key.startsWith(_alertStatePrefix))) {
