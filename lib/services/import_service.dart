@@ -406,6 +406,7 @@ class ImportService {
 
     final rows = CsvToListConverter(
       fieldDelimiter: delimiter,
+      eol: '\n',
       shouldParseNumbers: false,
     ).convert(text);
 
