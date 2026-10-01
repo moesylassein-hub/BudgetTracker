@@ -149,8 +149,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       transactions: items,
       expenses: expenses,
       incomeTransactions: income,
-      spent: expenses.fold(0, (sum, item) => sum + item.amount),
-      income: income.fold(0, (sum, item) => sum + item.amount),
+      spent: expenses.fold<double>(0, (sum, item) => sum + item.amount),
+      income: income.fold<double>(0, (sum, item) => sum + item.amount),
     );
   }
 
@@ -849,8 +849,11 @@ class _SpendingTimelineCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final spots = analysis.cumulativeSpending;
     final budget = controller.monthlyBudget;
-    final maxSpend = spots.fold<double>(0, (max, spot) => math.max(max, spot.y));
-    final maxY = math.max(math.max(maxSpend, budget), 1) * 1.15;
+    final maxSpend = spots.fold<double>(
+      0,
+      (max, spot) => math.max(max, spot.y).toDouble(),
+    );
+    final maxY = math.max(math.max(maxSpend, budget), 1.0).toDouble() * 1.15;
     final days = analysis.snapshot.totalDays;
 
     return Card(
@@ -863,7 +866,7 @@ class _SpendingTimelineCard extends StatelessWidget {
               child: LineChart(
                 LineChartData(
                   minX: 1,
-                  maxX: math.max(days.toDouble(), 2),
+                  maxX: math.max(days.toDouble(), 2.0).toDouble(),
                   minY: 0,
                   maxY: maxY,
                   gridData: FlGridData(
@@ -1177,9 +1180,12 @@ class _CashFlowChart extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final maxValue = history.fold<double>(
       0,
-      (max, item) => math.max(max, math.max(item.spent, item.income)),
+      (max, item) => math.max(
+        max,
+        math.max(item.spent, item.income),
+      ).toDouble(),
     );
-    final maxY = math.max(maxValue, 1) * 1.2;
+    final maxY = math.max(maxValue, 1.0).toDouble() * 1.2;
 
     return Card(
       child: Padding(
@@ -1982,7 +1988,7 @@ class _ReportAnalysis {
   }
 
   int get remainingDays =>
-      math.max(0, snapshot.totalDays - elapsedDays);
+      math.max(0, snapshot.totalDays - elapsedDays).toInt();
 
   double get cycleProgress =>
       (elapsedDays / math.max(snapshot.totalDays, 1))
@@ -2088,7 +2094,7 @@ class _ReportAnalysis {
         .map((item) => DateTime(item.date.year, item.date.month, item.date.day))
         .toSet()
         .length;
-    return math.max(0, elapsedDays - expenseDays);
+    return math.max(0, elapsedDays - expenseDays).toInt();
   }
 
   List<FlSpot> get cumulativeSpending {
