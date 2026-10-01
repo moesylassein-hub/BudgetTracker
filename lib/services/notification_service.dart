@@ -4,14 +4,20 @@ import '../utils/formatters.dart';
 
 class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  Future<void>? _initializationFuture;
 
-  Future<void> initialize() async {
+  Future<void> initialize() {
+    return _initializationFuture ??= _initialize();
+  }
+
+  Future<void> _initialize() async {
     const android = AndroidInitializationSettings('ic_stat_budget');
     const settings = InitializationSettings(android: android);
     await _plugin.initialize(settings: settings);
   }
 
   Future<bool> requestPermission() async {
+    await initialize();
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return true;
@@ -46,6 +52,7 @@ class NotificationService {
   }
 
   Future<void> _show(String title, String body) async {
+    await initialize();
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'budget_alerts',
