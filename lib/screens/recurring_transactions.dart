@@ -590,7 +590,9 @@ class _RecurringTransactionEditorState
         weekday: _weekday,
         note: _noteController.text.trim(),
         isActive: _isActive,
-        lastGeneratedOn: existing?.lastGeneratedOn,
+        lastGeneratedOn: existing != null && !existing!.isActive && _isActive
+            ? DateTime(now.year, now.month, now.day)
+            : existing?.lastGeneratedOn,
         createdAt: existing?.createdAt ?? now,
       );
 
