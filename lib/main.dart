@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'controllers/app_controller.dart';
 import 'screens/home_shell.dart';
+import 'services/drive_backup_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
@@ -16,11 +19,15 @@ Future<void> main() async {
 
   final notifications = NotificationService();
   await notifications.initialize();
+  final driveBackup = DriveBackupService();
+  await driveBackup.initialize();
   final controller = await AppController.create(
     LocalStorageService(),
     notifications,
+    driveBackup,
   );
   runApp(BudgetTrackerApp(controller: controller));
+  unawaited(controller.maybeAutoBackup());
 }
 
 class BudgetTrackerApp extends StatefulWidget {
