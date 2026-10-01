@@ -104,10 +104,12 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
             : current.description,
         category:
             field == _MappingField.category ? value : current.category,
-        subCategory: current.subCategory,
-        ledger: current.ledger,
-        account: current.account,
-        note: current.note,
+        subCategory: field == _MappingField.subCategory
+            ? value
+            : current.subCategory,
+        ledger: field == _MappingField.ledger ? value : current.ledger,
+        account: field == _MappingField.account ? value : current.account,
+        note: field == _MappingField.note ? value : current.note,
         amount: field == _MappingField.amount ? value : current.amount,
         incomeAmount: field == _MappingField.income
             ? value
@@ -117,7 +119,8 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
             : current.expenseAmount,
         type: field == _MappingField.type ? value : current.type,
         wallet: current.wallet,
-        currency: current.currency,
+        currency:
+            field == _MappingField.currency ? value : current.currency,
         labels: current.labels,
       );
       _preview = null;
@@ -448,6 +451,46 @@ class _MappingCard extends StatelessWidget {
               headers: table.headers,
               onChanged: (value) =>
                   onChanged(_MappingField.category, value),
+            ),
+            const SizedBox(height: 10),
+            _ColumnDropdown(
+              label: 'Sub-category → Note',
+              value: mapping.subCategory,
+              headers: table.headers,
+              onChanged: (value) =>
+                  onChanged(_MappingField.subCategory, value),
+            ),
+            const SizedBox(height: 10),
+            _ColumnDropdown(
+              label: 'Ledger',
+              value: mapping.ledger,
+              headers: table.headers,
+              onChanged: (value) =>
+                  onChanged(_MappingField.ledger, value),
+            ),
+            const SizedBox(height: 10),
+            _ColumnDropdown(
+              label: 'Account',
+              value: mapping.account,
+              headers: table.headers,
+              onChanged: (value) =>
+                  onChanged(_MappingField.account, value),
+            ),
+            const SizedBox(height: 10),
+            _ColumnDropdown(
+              label: 'Currency',
+              value: mapping.currency,
+              headers: table.headers,
+              onChanged: (value) =>
+                  onChanged(_MappingField.currency, value),
+            ),
+            const SizedBox(height: 10),
+            _ColumnDropdown(
+              label: 'Note',
+              value: mapping.note,
+              headers: table.headers,
+              onChanged: (value) =>
+                  onChanged(_MappingField.note, value),
             ),
             const SizedBox(height: 10),
             _ColumnDropdown(
@@ -808,6 +851,11 @@ enum _MappingField {
   date,
   description,
   category,
+  subCategory,
+  ledger,
+  account,
+  currency,
+  note,
   type,
   amount,
   income,
