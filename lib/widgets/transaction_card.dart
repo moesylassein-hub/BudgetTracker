@@ -23,6 +23,9 @@ class TransactionCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final categoryColor = AppCategories.colorFor(transaction.category, scheme);
     final color = transaction.isIncome ? scheme.tertiary : categoryColor;
+    final displayCurrency = transaction.currencyCode.isEmpty
+        ? currencyCode
+        : transaction.currencyCode;
 
     return Card(
       child: InkWell(
@@ -65,7 +68,7 @@ class TransactionCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(
-                '${transaction.isIncome ? '+' : '-'}${AppFormatters.money(transaction.amount, currencyCode: currencyCode)}',
+                '${transaction.isIncome ? '+' : '-'}${AppFormatters.money(transaction.amount, currencyCode: displayCurrency)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   color: transaction.isIncome ? scheme.tertiary : null,
