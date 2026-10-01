@@ -104,6 +104,9 @@ class _ImportTransactionsScreenState extends State<ImportTransactionsScreen> {
             : current.description,
         category:
             field == _MappingField.category ? value : current.category,
+        subCategory: current.subCategory,
+        ledger: current.ledger,
+        account: current.account,
         note: current.note,
         amount: field == _MappingField.amount ? value : current.amount,
         incomeAmount: field == _MappingField.income
@@ -300,9 +303,9 @@ class _IntroCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Supports CSV and Excel (.xlsx), with automatic detection for '
-              'Money Tracker by Paraga Mobile. Nothing is saved until you '
-              'review the preview.',
+              'Supports CSV and Excel (.xlsx), including Money Tracker by '
+              'Paraga Mobile and ledger/account exports. Nothing is saved '
+              'until you review the preview.',
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
                 height: 1.4,
