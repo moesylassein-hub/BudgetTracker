@@ -65,6 +65,52 @@ void main() {
     });
   });
 
+  group('Ledger/account export compatibility', () {
+    test('repairs unquoted thousands comma and shifted columns', () {
+      final bytes = Uint8List.fromList(
+        utf8.encode(
+          'Date,Ledger,Account,Category,Sub-Category,Amount,Currency,Note,Type\n'
+          '1/10/2026,My Wallet,Cash,Housing,Housing,£4,233.33,EGP,dumbbell!,Expense\n'
+          '1/10/2026,My Wallet,Cash,Charity,Charity,£1,0,EGP,,Expense\n'
+          '1/10/2026,My Wallet,Cash,Family,Saqr,£12,0,EGP,,Expense\n',
+        ),
+      );
+
+      final table = service.readFile(
+        fileName: 'ledger_export.csv',
+        bytes: bytes,
+      );
+      final mapping = service.detectMapping(table);
+      final preview = service.preview(
+        table: table,
+        mapping: mapping,
+        existingTransactions: const [],
+      );
+
+      expect(mapping.date, 0);
+      expect(mapping.ledger, 1);
+      expect(mapping.account, 2);
+      expect(mapping.category, 3);
+      expect(mapping.subCategory, 4);
+      expect(mapping.amount, 5);
+      expect(mapping.currency, 6);
+      expect(mapping.note, 7);
+      expect(mapping.type, 8);
+
+      expect(preview.ready, hasLength(3));
+      expect(preview.ready[0].type, TransactionType.expense);
+      expect(preview.ready[0].amount, 4233.33);
+      expect(preview.ready[0].store, 'dumbbell!');
+      expect(preview.ready[0].category, 'Housing');
+      expect(preview.ready[0].note, contains('Ledger: My Wallet'));
+      expect(preview.ready[0].note, contains('Account: Cash'));
+      expect(preview.ready[0].note, contains('Currency: EGP'));
+
+      expect(preview.ready[2].category, 'Family');
+      expect(preview.ready[2].note, contains('Sub-category: Saqr'));
+    });
+  });
+
   group('Money Tracker by Paraga import compatibility', () {
     test('imports signed Amount(Auto) layout', () {
       final table = ImportTable(
