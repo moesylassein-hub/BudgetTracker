@@ -11,7 +11,7 @@ import '../models/transaction.dart';
 import '../utils/app_categories.dart';
 import '../utils/formatters.dart';
 
-enum ReportSection { overview, trends, categories }
+enum ReportSection { overview, trends }
 
 class ReportsScreen extends StatefulWidget {
   final AppController controller;
@@ -107,11 +107,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   icon: Icon(Icons.show_chart_rounded),
                   label: Text('Trends'),
                 ),
-                ButtonSegment(
-                  value: ReportSection.categories,
-                  icon: Icon(Icons.leaderboard_rounded),
-                  label: Text('Categories'),
-                ),
               ],
               selected: {_section},
               onSelectionChanged: (value) {
@@ -124,16 +119,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 controller: controller,
                 analysis: analysis,
               )
-            else if (_section == ReportSection.trends)
+            else
               _TrendsReport(
                 controller: controller,
                 analysis: analysis,
                 history: history,
-              )
-            else
-              _CategoriesReport(
-                controller: controller,
-                analysis: analysis,
               ),
           ],
         );
@@ -353,62 +343,6 @@ class _TrendsReport extends StatelessWidget {
   static String _signedPercent(double value) {
     final prefix = value > 0 ? '+' : '';
     return prefix + value.toStringAsFixed(0) + '%';
-  }
-}
-
-class _CategoriesReport extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _CategoriesReport({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final totals = analysis.categoryTotals;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SectionTitle(
-          title: 'Category ranking',
-          subtitle: 'Largest categories first',
-        ),
-        const SizedBox(height: 10),
-        if (totals.isEmpty)
-          const _EmptyReportCard(
-            icon: Icons.leaderboard_outlined,
-            title: 'Nothing to rank yet',
-            text: 'Your category ranking will appear as you spend.',
-          )
-        else
-          _CategoryRankingCard(
-            controller: controller,
-            analysis: analysis,
-          ),
-        const SizedBox(height: 22),
-        _SectionTitle(
-          title: 'Category budgets',
-          subtitle: 'Limits and remaining room',
-        ),
-        const SizedBox(height: 10),
-        _CategoryBudgetCard(
-          controller: controller,
-          analysis: analysis,
-        ),
-        const SizedBox(height: 22),
-        _SectionTitle(
-          title: 'Top merchants',
-          subtitle: 'Where you spent the most',
-        ),
-        const SizedBox(height: 10),
-        _MerchantCard(
-          controller: controller,
-          analysis: analysis,
-        ),
-      ],
-    );
   }
 }
 
@@ -1268,298 +1202,6 @@ class _PerformanceCard extends StatelessWidget {
   }
 }
 
-class _CategoryRankingCard extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _CategoryRankingCard({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final total = analysis.snapshot.spent;
-    final entries = analysis.categoryTotals.entries.toList();
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            for (var i = 0; i < entries.length; i++) ...[
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppCategories.colorFor(
-                        entries[i].key,
-                        scheme,
-                      ).withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      AppCategories.iconFor(
-                        entries[i].key,
-                        iconKey: controller
-                            .categoryByName(entries[i].key)
-                            ?.iconKey,
-                      ),
-                      size: 20,
-                      color: AppCategories.colorFor(
-                        entries[i].key,
-                        scheme,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                entries[i].key,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              AppFormatters.money(
-                                entries[i].value,
-                                currencyCode: controller.currencyCode,
-                              ),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        LinearProgressIndicator(
-                          value: total <= 0 ? 0 : entries[i].value / total,
-                          minHeight: 6,
-                          borderRadius: BorderRadius.circular(99),
-                          color: AppCategories.colorFor(
-                            entries[i].key,
-                            scheme,
-                          ),
-                          backgroundColor:
-                              scheme.surfaceContainerHighest,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (i != entries.length - 1)
-                const SizedBox(height: 16),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryBudgetCard extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _CategoryBudgetCard({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final categories = controller.categories
-        .where(
-          (item) =>
-              item.type == TransactionType.expense &&
-              (item.monthlyBudget ?? 0) > 0,
-        )
-        .toList();
-
-    if (categories.isEmpty) {
-      return const _EmptyReportCard(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'No category limits yet',
-        text: 'Set category budgets in Settings to track limits here.',
-      );
-    }
-
-    categories.sort((a, b) {
-      final aRatio = controller.categorySpent(a.name, analysis.snapshot.start) /
-          (a.monthlyBudget ?? 1);
-      final bRatio = controller.categorySpent(b.name, analysis.snapshot.start) /
-          (b.monthlyBudget ?? 1);
-      return bRatio.compareTo(aRatio);
-    });
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            for (var i = 0; i < categories.length; i++) ...[
-              Builder(
-                builder: (context) {
-                  final category = categories[i];
-                  final limit = category.monthlyBudget!;
-                  final spent = controller.categorySpent(
-                    category.name,
-                    analysis.snapshot.start,
-                  );
-                  final raw = limit <= 0 ? 0.0 : spent / limit;
-                  final remaining = limit - spent;
-                  final over = remaining < 0;
-                  final scheme = Theme.of(context).colorScheme;
-                  return Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              category.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            over
-                                ? AppFormatters.compactMoney(
-                                      remaining.abs(),
-                                      currencyCode: controller.currencyCode,
-                                    ) +
-                                    ' over'
-                                : AppFormatters.compactMoney(
-                                      remaining,
-                                      currencyCode: controller.currencyCode,
-                                    ) +
-                                    ' left',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: over ? scheme.error : scheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 7),
-                      LinearProgressIndicator(
-                        value: raw.clamp(0.0, 1.0).toDouble(),
-                        minHeight: 8,
-                        borderRadius: BorderRadius.circular(99),
-                        color: over ? scheme.error : scheme.primary,
-                      ),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Text(
-                            AppFormatters.money(
-                                  spent,
-                                  currencyCode: controller.currencyCode,
-                                ) +
-                                ' of ' +
-                                AppFormatters.money(
-                                  limit,
-                                  currencyCode: controller.currencyCode,
-                                ),
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            (raw * 100).round().toString() + '%',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
-              if (i != categories.length - 1)
-                const Divider(height: 26),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MerchantCard extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _MerchantCard({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final merchants = analysis.topMerchants.take(5).toList();
-    if (merchants.isEmpty) {
-      return const _EmptyReportCard(
-        icon: Icons.storefront_outlined,
-        title: 'No merchant data yet',
-        text: 'Merchant totals will appear after you add expenses.',
-      );
-    }
-
-    return Card(
-      child: Column(
-        children: [
-          for (var i = 0; i < merchants.length; i++) ...[
-            ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 4,
-              ),
-              leading: CircleAvatar(
-                child: Text((i + 1).toString()),
-              ),
-              title: Text(
-                merchants[i].name,
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              subtitle: Text(
-                merchants[i].count.toString() +
-                    (merchants[i].count == 1
-                        ? ' transaction'
-                        : ' transactions'),
-              ),
-              trailing: Text(
-                AppFormatters.money(
-                  merchants[i].amount,
-                  currencyCode: controller.currencyCode,
-                ),
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-            if (i != merchants.length - 1)
-              const Divider(height: 1, indent: 72),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _PerformanceRow extends StatelessWidget {
   final String label;
   final String value;
@@ -1852,30 +1494,6 @@ class _ReportAnalysis {
     return _BiggestDay(entries.first.key, entries.first.value);
   }
 
-  List<_MerchantTotal> get topMerchants {
-    final totals = <String, _MerchantAccumulator>{};
-    for (final item in snapshot.expenses) {
-      final name = item.store.trim().isEmpty ? 'Unknown' : item.store.trim();
-      final current = totals.putIfAbsent(
-        name,
-        () => _MerchantAccumulator(),
-      );
-      current.amount += item.amount;
-      current.count += 1;
-    }
-    final result = totals.entries
-        .map(
-          (entry) => _MerchantTotal(
-            entry.key,
-            entry.value.amount,
-            entry.value.count,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => b.amount.compareTo(a.amount));
-    return result;
-  }
-
   List<FlSpot> get cumulativeSpending {
     final byDay = <int, double>{};
     for (final item in snapshot.expenses) {
@@ -2057,19 +1675,6 @@ class _Insight {
     this.body,
     this.tone,
   );
-}
-
-class _MerchantAccumulator {
-  double amount = 0;
-  int count = 0;
-}
-
-class _MerchantTotal {
-  final String name;
-  final double amount;
-  final int count;
-
-  const _MerchantTotal(this.name, this.amount, this.count);
 }
 
 class _BiggestDay {
