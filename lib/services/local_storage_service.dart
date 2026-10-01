@@ -20,6 +20,10 @@ class LocalStorageService {
   static const _categoriesKey = 'categories_v1';
   static const _goalsKey = 'savings_goals_v1';
   static const _alertsEnabledKey = 'budget_alerts_enabled_v1';
+  static const _budgetCycleStartDayKey = 'budget_cycle_start_day_v1';
+  static const _backupFrequencyKey = 'drive_backup_frequency_v1';
+  static const _lastDriveBackupKey = 'last_drive_backup_v1';
+  static const _driveBackupDirtyKey = 'drive_backup_dirty_v1';
   static const _alertStatePrefix = 'budget_alert_state_';
 
   Database? _database;
@@ -195,6 +199,46 @@ class LocalStorageService {
     await prefs.setBool(_alertsEnabledKey, value);
   }
 
+  Future<int> loadBudgetCycleStartDay() async {
+    final prefs = await _prefs;
+    return (prefs.getInt(_budgetCycleStartDayKey) ?? 1).clamp(1, 28);
+  }
+
+  Future<void> saveBudgetCycleStartDay(int value) async {
+    final prefs = await _prefs;
+    await prefs.setInt(_budgetCycleStartDayKey, value.clamp(1, 28));
+  }
+
+  Future<String> loadBackupFrequencyName() async {
+    final prefs = await _prefs;
+    return prefs.getString(_backupFrequencyKey) ?? 'off';
+  }
+
+  Future<void> saveBackupFrequencyName(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(_backupFrequencyKey, value);
+  }
+
+  Future<DateTime?> loadLastDriveBackupAt() async {
+    final prefs = await _prefs;
+    return DateTime.tryParse(prefs.getString(_lastDriveBackupKey) ?? '');
+  }
+
+  Future<void> saveLastDriveBackupAt(DateTime value) async {
+    final prefs = await _prefs;
+    await prefs.setString(_lastDriveBackupKey, value.toUtc().toIso8601String());
+  }
+
+  Future<bool> loadDriveBackupDirty() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_driveBackupDirtyKey) ?? true;
+  }
+
+  Future<void> saveDriveBackupDirty(bool value) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_driveBackupDirtyKey, value);
+  }
+
   Future<Map<String, dynamic>> loadBudgetAlertState(String monthKey) async {
     final prefs = await _prefs;
     final raw = prefs.getString('$_alertStatePrefix$monthKey');
@@ -214,6 +258,65 @@ class LocalStorageService {
     await prefs.setString('$_alertStatePrefix$monthKey', jsonEncode(state));
   }
 
+  Future<void> restoreFinancialSnapshot(Map<String, dynamic> data) async {
+    final db = await _db;
+    final rawTransactions = data['transactions'] as List<dynamic>? ?? const [];
+    final transactions = rawTransactions
+        .whereType<Map>()
+        .map((item) => Transaction.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+
+    await db.transaction((txn) async {
+      await txn.delete(_transactionsTable);
+      for (final transaction in transactions) {
+        await txn.insert(
+          _transactionsTable,
+          _transactionToRow(transaction),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+
+    final prefs = await _prefs;
+    final budget = (data['monthlyBudget'] as num?)?.toDouble();
+    if (budget != null && budget > 0) {
+      await prefs.setDouble(_budgetKey, budget);
+    }
+
+    final currency = data['currencyCode'] as String?;
+    if (currency != null && currency.isNotEmpty) {
+      await prefs.setString(_currencyKey, currency);
+    }
+
+    final theme = data['themeMode'] as String?;
+    if (theme != null && theme.isNotEmpty) {
+      await prefs.setString(_themeKey, theme);
+    }
+
+    final rawCategories = data['categories'] as List<dynamic>? ?? const [];
+    if (rawCategories.isNotEmpty) {
+      await prefs.setString(_categoriesKey, jsonEncode(rawCategories));
+    } else {
+      await prefs.remove(_categoriesKey);
+    }
+
+    final rawGoals = data['goals'] as List<dynamic>? ?? const [];
+    await prefs.setString(_goalsKey, jsonEncode(rawGoals));
+
+    await prefs.setBool(
+      _alertsEnabledKey,
+      data['budgetAlertsEnabled'] as bool? ?? false,
+    );
+    await prefs.setInt(
+      _budgetCycleStartDayKey,
+      ((data['budgetCycleStartDay'] as num?)?.toInt() ?? 1).clamp(1, 28),
+    );
+
+    for (final key in prefs.getKeys().where((key) => key.startsWith(_alertStatePrefix))) {
+      await prefs.remove(key);
+    }
+  }
+
   Future<void> clearFinancialData() async {
     await clearTransactions();
     final prefs = await _prefs;
@@ -222,6 +325,7 @@ class LocalStorageService {
     await prefs.remove(_categoriesKey);
     await prefs.remove(_goalsKey);
     await prefs.remove(_alertsEnabledKey);
+    await prefs.remove(_budgetCycleStartDayKey);
     for (final key in prefs.getKeys().where((key) => key.startsWith(_alertStatePrefix))) {
       await prefs.remove(key);
     }
