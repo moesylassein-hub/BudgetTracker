@@ -98,6 +98,7 @@ class ImportPreview {
   final int duplicateCount;
   final int invalidCount;
   final int transferCount;
+  final Set<String> sourceCurrencies;
   final List<String> warnings;
 
   const ImportPreview({
@@ -105,6 +106,7 @@ class ImportPreview {
     required this.duplicateCount,
     required this.invalidCount,
     required this.transferCount,
+    required this.sourceCurrencies,
     required this.warnings,
   });
 }
@@ -238,6 +240,7 @@ class ImportService {
     var duplicateCount = 0;
     var invalidCount = 0;
     var transferCount = 0;
+    final sourceCurrencies = <String>{};
 
     for (var rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
       final row = table.rows[rowIndex];
@@ -291,7 +294,10 @@ class ImportService {
         if (wallet.isNotEmpty) noteParts.add('Wallet: ' + wallet);
 
         final currency = _cell(row, mapping.currency).trim();
-        if (currency.isNotEmpty) noteParts.add('Currency: ' + currency);
+        if (currency.isNotEmpty) {
+          sourceCurrencies.add(currency.toUpperCase());
+          noteParts.add('Currency: ' + currency);
+        }
 
         final labels = _cell(row, mapping.labels).trim();
         if (labels.isNotEmpty) noteParts.add('Labels: ' + labels);
@@ -332,6 +338,7 @@ class ImportService {
       duplicateCount: duplicateCount,
       invalidCount: invalidCount,
       transferCount: transferCount,
+      sourceCurrencies: sourceCurrencies,
       warnings: warnings,
     );
   }
@@ -353,6 +360,8 @@ class ImportService {
 
   ImportTable _readExcel(String fileName, Uint8List bytes) {
     final workbook = Excel.decodeBytes(bytes);
+    ImportTable? fallback;
+
     for (final entry in workbook.tables.entries) {
       final sheet = entry.value;
       if (sheet.rows.isEmpty) continue;
@@ -363,13 +372,25 @@ class ImportService {
                 .toList(),
           )
           .toList();
-      final table = _tableFromRows(
-        fileName: fileName,
-        sheetName: entry.key,
-        rawRows: rawRows,
-      );
-      if (table.headers.isNotEmpty && table.rows.isNotEmpty) return table;
+
+      try {
+        final table = _tableFromRows(
+          fileName: fileName,
+          sheetName: entry.key,
+          rawRows: rawRows,
+        );
+        fallback ??= table;
+        final mapping = detectMapping(table);
+        final hasAmount = mapping.amount != null ||
+            mapping.incomeAmount != null ||
+            mapping.expenseAmount != null;
+        if (mapping.date != null && hasAmount) return table;
+      } catch (_) {
+        // Ignore non-tabular/summary sheets and continue looking.
+      }
     }
+
+    if (fallback != null) return fallback;
     throw const FormatException('No transaction table was found in the XLSX.');
   }
 
