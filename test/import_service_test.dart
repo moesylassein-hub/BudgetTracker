@@ -10,6 +10,16 @@ void main() {
   const service = ImportService();
 
   group('Refund imports', () {
+    test('typed Amount(Auto) preserves Paraga cash-flow convention', () {
+      final table = service.readFile(fileName: 'paraga.csv', bytes: Uint8List.fromList(utf8.encode(
+        'Date,Category,Remark,Amount(Auto),Type\n'
+        '2026-10-01,Travel,Purchase,-80,Expense\n'
+        '2026-10-01,Travel,Refund,80,Expense\n'
+      )));
+      final preview = service.preview(table: table, mapping: service.detectMapping(table), existingTransactions: const []);
+      expect(preview.ready.map((item) => item.amount), [80, -80]);
+      expect(preview.ready.every((item) => item.isExpense), isTrue);
+    });
     test(
         'explicit types preserve signs and duplicate detection distinguishes refunds',
         () {

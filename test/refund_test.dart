@@ -217,7 +217,7 @@ void main() {
     await tester.pumpAndSettle();
     final amount = find.byWidgetPredicate(
       (widget) =>
-          widget is TextFormField && widget.decoration?.labelText == 'Amount',
+          widget is TextField && widget.decoration?.labelText == 'Amount',
     );
     await tester.enterText(amount, '-800');
     await tester.tap(find.text('Save changes'));

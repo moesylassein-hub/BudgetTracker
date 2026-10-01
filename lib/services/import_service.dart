@@ -297,7 +297,11 @@ class ImportService {
           continue;
         }
 
-        final amountAndType = _resolveAmountAndType(row, mapping, typeText);
+        final amountAndType = _resolveAmountAndType(
+          row, mapping, typeText,
+          signedCashFlow: mapping.amount != null &&
+              _normalizeHeader(table.headers[mapping.amount!]) == 'amountauto',
+        );
         if (amountAndType == null || !amountAndType.type.acceptsAmount(amountAndType.amount)) {
           invalidCount++;
           warnings.add(
@@ -565,8 +569,9 @@ class ImportService {
   _AmountAndType? _resolveAmountAndType(
     List<String> row,
     ImportMapping mapping,
-    String typeText,
-  ) {
+    String typeText, {
+    bool signedCashFlow = false,
+  }) {
     final income = _parseAmount(_cell(row, mapping.incomeAmount));
     final expense = _parseAmount(_cell(row, mapping.expenseAmount));
 
@@ -582,6 +587,11 @@ class ImportService {
 
     final explicitType = _parseType(typeText);
     if (explicitType != null) {
+      // Paraga Amount(Auto) represents cash flow, even with a Type column.
+      // Ordinary typed Amount exports store expense amounts directly.
+      if (signedCashFlow && explicitType == TransactionType.expense) {
+        return _AmountAndType(-signed, explicitType);
+      }
       return _AmountAndType(signed, explicitType);
     }
 
