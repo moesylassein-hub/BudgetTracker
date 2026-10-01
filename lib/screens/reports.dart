@@ -100,7 +100,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ButtonSegment(
                   value: ReportSection.overview,
                   icon: Icon(Icons.space_dashboard_rounded),
-                  label: Text('Overview'),
+                  label: Text('Insights'),
                 ),
                 ButtonSegment(
                   value: ReportSection.trends,
@@ -181,53 +181,9 @@ class _OverviewReport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = analysis.snapshot;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FinancialHealthHero(
-          controller: controller,
-          analysis: analysis,
-        ),
-        const SizedBox(height: 14),
-        _MetricGrid(
-          items: [
-            _Metric(
-              'Income',
-              AppFormatters.compactMoney(
-                snapshot.income,
-                currencyCode: controller.currencyCode,
-              ),
-              Icons.south_west_rounded,
-            ),
-            _Metric(
-              snapshot.net >= 0 ? 'Net saved' : 'Net outflow',
-              AppFormatters.compactMoney(
-                snapshot.net.abs(),
-                currencyCode: controller.currencyCode,
-              ),
-              snapshot.net >= 0
-                  ? Icons.savings_rounded
-                  : Icons.trending_down_rounded,
-            ),
-            _Metric(
-              'Daily average',
-              AppFormatters.compactMoney(
-                analysis.dailyAverage,
-                currencyCode: controller.currencyCode,
-              ),
-              Icons.today_rounded,
-            ),
-            _Metric(
-              'Savings rate',
-              snapshot.income <= 0
-                  ? '—'
-                  : analysis.savingsRate.toStringAsFixed(0) + '%',
-              Icons.percent_rounded,
-            ),
-          ],
-        ),
-        const SizedBox(height: 22),
         _SectionTitle(
           title: 'Smart insights',
           subtitle: 'What stands out in this budget cycle',
@@ -877,182 +833,6 @@ class _CycleHeader extends StatelessWidget {
             label: const Text('Jump to current cycle'),
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _FinancialHealthHero extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _FinancialHealthHero({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final spent = analysis.snapshot.spent;
-    final budget = controller.monthlyBudget;
-    final utilization = budget <= 0 ? 0.0 : spent / budget;
-    final remaining = budget - spent;
-    final projected = analysis.projectedSpend;
-    final projectedOver = projected > budget;
-    final progress = utilization.clamp(0.0, 1.0).toDouble();
-
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primary,
-            Color.lerp(scheme.primary, scheme.tertiary, 0.55)!,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.primary.withValues(alpha: 0.20),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: DefaultTextStyle(
-        style: TextStyle(color: scheme.onPrimary),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.insights_rounded, color: scheme.onPrimary),
-                const SizedBox(width: 9),
-                Text(
-                  analysis.healthLabel,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.onPrimary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    (utilization * 100).round().toString() + '% used',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Text(
-              AppFormatters.money(
-                remaining.abs(),
-                currencyCode: controller.currencyCode,
-              ),
-              style: const TextStyle(
-                fontSize: 35,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -1.2,
-              ),
-            ),
-            Text(
-              remaining >= 0 ? 'left in this cycle' : 'over your cycle budget',
-              style: TextStyle(
-                color: scheme.onPrimary.withValues(alpha: 0.82),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 9,
-                backgroundColor: scheme.onPrimary.withValues(alpha: 0.18),
-                valueColor: AlwaysStoppedAnimation<Color>(scheme.onPrimary),
-              ),
-            ),
-            const SizedBox(height: 13),
-            Row(
-              children: [
-                Expanded(
-                  child: _HeroMiniStat(
-                    label: 'Spent',
-                    value: AppFormatters.compactMoney(
-                      spent,
-                      currencyCode: controller.currencyCode,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _HeroMiniStat(
-                    label: analysis.isCurrent ? 'Projected' : 'Cycle total',
-                    value: AppFormatters.compactMoney(
-                      projected,
-                      currencyCode: controller.currencyCode,
-                    ),
-                    warning: analysis.isCurrent && projectedOver,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeroMiniStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool warning;
-
-  const _HeroMiniStat({
-    required this.label,
-    required this.value,
-    this.warning = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final onPrimary = Theme.of(context).colorScheme.onPrimary;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: onPrimary,
-            fontWeight: FontWeight.w900,
-            fontSize: 15,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            color: onPrimary.withValues(alpha: warning ? 1 : 0.72),
-            fontSize: 11,
-            fontWeight: warning ? FontWeight.w800 : FontWeight.w500,
-          ),
-        ),
       ],
     );
   }
@@ -1968,21 +1748,6 @@ class _ReportAnalysis {
       for (var day = 1; day <= math.max(1, limit); day++)
         FlSpot(day.toDouble(), running += byDay[day] ?? 0),
     ];
-  }
-
-  String get healthLabel {
-    final budget = controller.monthlyBudget;
-    if (snapshot.transactions.isEmpty) return 'Ready for your data';
-    if (budget <= 0) return 'Cycle snapshot';
-    final utilization = snapshot.spent / budget;
-    if (isCurrent) {
-      if (projectedSpend > budget * 1.1) return 'Spending needs attention';
-      if (utilization <= cycleProgress + 0.08) return 'You are on track';
-      return 'Slightly ahead of pace';
-    }
-    if (utilization <= 0.9) return 'Finished under budget';
-    if (utilization <= 1) return 'Finished near budget';
-    return 'Finished over budget';
   }
 
   List<_Insight> get insights {
