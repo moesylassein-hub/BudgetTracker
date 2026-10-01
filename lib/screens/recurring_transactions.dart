@@ -910,6 +910,14 @@ class _RecurringTransactionEditorState
         letterSpacing: 0.8,
       );
 
+  bool _sameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _sameNullableDate(DateTime? a, DateTime? b) {
+    if (a == null || b == null) return a == null && b == null;
+    return _sameDate(a, b);
+  }
+
   DateTime _today() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day);
