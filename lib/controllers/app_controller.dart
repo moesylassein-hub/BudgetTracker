@@ -232,7 +232,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> setBudgetCycleStartDay(int value) async {
-    final next = value.clamp(1, 28);
+    final next = value.clamp(1, 28).toInt();
     if (next == _budgetCycleStartDay) return;
     await _storage.saveBudgetCycleStartDay(next);
     _budgetCycleStartDay = next;
