@@ -9,6 +9,7 @@ import '../models/transaction.dart';
 import '../utils/budget_cycle.dart';
 
 class ExportService {
+  const ExportService();
   static const _excelMime =
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
