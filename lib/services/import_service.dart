@@ -291,18 +291,18 @@ class ImportService {
         final parsedDate = _parseDate(_cell(row, mapping.date));
         if (parsedDate == null) {
           invalidCount++;
-          if (warnings.length < 5) {
-            warnings.add('Row ' + (rowIndex + 2).toString() + ': date could not be read.');
-          }
+          warnings.add(
+            'Row ' + (rowIndex + 2).toString() + ': date could not be read.',
+          );
           continue;
         }
 
         final amountAndType = _resolveAmountAndType(row, mapping, typeText);
         if (amountAndType == null || amountAndType.amount <= 0) {
           invalidCount++;
-          if (warnings.length < 5) {
-            warnings.add('Row ' + (rowIndex + 2).toString() + ': amount could not be read.');
-          }
+          warnings.add(
+            'Row ' + (rowIndex + 2).toString() + ': amount could not be read.',
+          );
           continue;
         }
 
@@ -375,9 +375,9 @@ class ImportService {
         ready.add(transaction);
       } catch (_) {
         invalidCount++;
-        if (warnings.length < 5) {
-          warnings.add('Row ' + (rowIndex + 2).toString() + ': could not be imported.');
-        }
+        warnings.add(
+          'Row ' + (rowIndex + 2).toString() + ': could not be imported.',
+        );
       }
     }
 
