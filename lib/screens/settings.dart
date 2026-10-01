@@ -262,7 +262,7 @@ class SettingsScreen extends StatelessWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Clear all data?'),
         content: const Text(
-          'This permanently deletes saved transactions and goals, resets budgets and categories, and turns budget alerts off on this device.',
+          'This permanently deletes saved transactions, recurring rules and goals, resets budgets and categories, and turns budget alerts off on this device.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
@@ -293,7 +293,7 @@ class SettingsScreen extends StatelessWidget {
               Text('Privacy by design', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 12),
               const Text(
-                'Budget Tracker stores transactions, goals, categories and preferences locally on your device. Receipt text recognition runs on-device. If you explicitly connect Google Drive, the app can also store private backup snapshots in its Google Drive app-data area. This build contains no advertising or analytics SDK. Optional budget alerts use local device notifications only.',
+                'Budget Tracker stores transactions, recurring rules, goals, categories and preferences locally on your device. Receipt text recognition runs on-device. If you explicitly connect Google Drive, the app can also store private backup snapshots in its Google Drive app-data area. This build contains no advertising or analytics SDK. Optional budget alerts use local device notifications only.',
                 style: TextStyle(height: 1.55),
               ),
               const SizedBox(height: 16),
@@ -608,7 +608,7 @@ class SettingsScreen extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
                     leading: _SettingsIcon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.error),
                     title: Text('Clear local data', style: TextStyle(fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.error)),
-                    subtitle: const Text('Delete transactions, goals, budgets and custom categories'),
+                    subtitle: const Text('Delete transactions, recurring rules, goals, budgets and custom categories'),
                     onTap: () => _clearData(context),
                   ),
                 ],
