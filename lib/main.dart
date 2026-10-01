@@ -39,13 +39,15 @@ class BudgetTrackerApp extends StatefulWidget {
   State<BudgetTrackerApp> createState() => _BudgetTrackerAppState();
 }
 
-class _BudgetTrackerAppState extends State<BudgetTrackerApp> {
+class _BudgetTrackerAppState extends State<BudgetTrackerApp>
+    with WidgetsBindingObserver {
   late ThemeMode _themeMode;
 
   @override
   void initState() {
     super.initState();
     _themeMode = widget.controller.themeMode;
+    WidgetsBinding.instance.addObserver(this);
     widget.controller.addListener(_syncTheme);
   }
 
@@ -59,6 +61,14 @@ class _BudgetTrackerAppState extends State<BudgetTrackerApp> {
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.controller.processRecurringTransactions());
+      unawaited(widget.controller.maybeAutoBackup());
+    }
+  }
+
   void _syncTheme() {
     final next = widget.controller.themeMode;
     if (next != _themeMode && mounted) {
@@ -68,6 +78,7 @@ class _BudgetTrackerAppState extends State<BudgetTrackerApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_syncTheme);
     super.dispose();
   }
