@@ -287,11 +287,6 @@ class _TrendsReport extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ComparisonBanner(
-          controller: controller,
-          analysis: analysis,
-        ),
-        const SizedBox(height: 22),
         _SectionTitle(
           title: '6-cycle cash flow',
           subtitle: 'Income versus spending over time',
@@ -376,23 +371,6 @@ class _CategoriesReport extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionTitle(
-          title: 'Spending mix',
-          subtitle: 'Where your money went this cycle',
-        ),
-        const SizedBox(height: 10),
-        if (totals.isEmpty)
-          const _EmptyReportCard(
-            icon: Icons.donut_large_rounded,
-            title: 'No expense data yet',
-            text: 'Add expenses to unlock category analysis.',
-          )
-        else
-          _CategoryDonutCard(
-            controller: controller,
-            analysis: analysis,
-          ),
-        const SizedBox(height: 22),
         _SectionTitle(
           title: 'Category ranking',
           subtitle: 'Largest categories first',
@@ -634,12 +612,6 @@ class _FinancialHealthHero extends StatelessWidget {
                       currencyCode: controller.currencyCode,
                     ),
                     warning: analysis.isCurrent && projectedOver,
-                  ),
-                ),
-                Expanded(
-                  child: _HeroMiniStat(
-                    label: 'Transactions',
-                    value: analysis.snapshot.transactions.length.toString(),
                   ),
                 ),
               ],
@@ -1021,9 +993,6 @@ class _HighlightsCard extends StatelessWidget {
     }
 
     final biggest = analysis.biggestExpense;
-    final topMerchant = analysis.topMerchants.isEmpty
-        ? null
-        : analysis.topMerchants.first;
     final rows = <_HighlightRow>[
       if (biggest != null)
         _HighlightRow(
@@ -1045,22 +1014,6 @@ class _HighlightsCard extends StatelessWidget {
             currencyCode: controller.currencyCode,
           ),
         ),
-      if (topMerchant != null)
-        _HighlightRow(
-          Icons.storefront_rounded,
-          'Top merchant',
-          topMerchant.name,
-          AppFormatters.money(
-            topMerchant.amount,
-            currencyCode: controller.currencyCode,
-          ),
-        ),
-      _HighlightRow(
-        Icons.do_not_disturb_on_outlined,
-        'No-spend days',
-        analysis.noSpendDays.toString() + ' days',
-        analysis.elapsedDays.toString() + ' elapsed',
-      ),
     ];
 
     return Card(
@@ -1092,81 +1045,6 @@ class _HighlightsCard extends StatelessWidget {
             if (i != rows.length - 1)
               const Divider(height: 1, indent: 56),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _ComparisonBanner extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _ComparisonBanner({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final change = analysis.previousChange;
-    final positive = change != null && change <= 0;
-    final icon = change == null
-        ? Icons.horizontal_rule_rounded
-        : positive
-            ? Icons.trending_down_rounded
-            : Icons.trending_up_rounded;
-    final title = change == null
-        ? 'No previous-cycle comparison yet'
-        : positive
-            ? 'Spending improved'
-            : 'Spending increased';
-    final body = change == null
-        ? 'Add activity across more than one cycle to unlock comparisons.'
-        : change.abs().toStringAsFixed(0) +
-            '% ' +
-            (positive ? 'lower' : 'higher') +
-            ' than the previous cycle.';
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: positive
-            ? scheme.primaryContainer
-            : change == null
-                ? scheme.surfaceContainerHighest
-                : scheme.errorContainer,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: positive
-                ? scheme.onPrimaryContainer
-                : change == null
-                    ? scheme.onSurfaceVariant
-                    : scheme.onErrorContainer,
-            size: 28,
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(body),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1383,103 +1261,6 @@ class _PerformanceCard extends StatelessWidget {
                 ],
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryDonutCard extends StatelessWidget {
-  final AppController controller;
-  final _ReportAnalysis analysis;
-
-  const _CategoryDonutCard({
-    required this.controller,
-    required this.analysis,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final totals = analysis.categoryTotals;
-    final total = analysis.snapshot.spent;
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 230,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  PieChart(
-                    PieChartData(
-                      centerSpaceRadius: 64,
-                      sectionsSpace: 3,
-                      startDegreeOffset: -90,
-                      sections: totals.entries.map((entry) {
-                        final percentage =
-                            total <= 0 ? 0 : entry.value / total * 100;
-                        return PieChartSectionData(
-                          value: entry.value,
-                          color: AppCategories.colorFor(
-                            entry.key,
-                            scheme,
-                          ),
-                          radius: 42,
-                          showTitle: percentage >= 8,
-                          title: percentage.round().toString() + '%',
-                          titleStyle: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 11,
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        AppFormatters.compactMoney(
-                          total,
-                          currencyCode: controller.currencyCode,
-                        ),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        'spent',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (analysis.topCategory != null)
-              Text(
-                analysis.topCategory!.key +
-                    ' is your largest category at ' +
-                    ((analysis.topCategory!.value / total) * 100)
-                        .round()
-                        .toString() +
-                    '%.',
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
           ],
         ),
       ),
@@ -2093,18 +1874,6 @@ class _ReportAnalysis {
         .toList()
       ..sort((a, b) => b.amount.compareTo(a.amount));
     return result;
-  }
-
-  int get noSpendDays {
-    final expenseDays = snapshot.expenses
-        .where((item) {
-          if (!isCurrent) return true;
-          return !item.date.isAfter(DateTime.now());
-        })
-        .map((item) => DateTime(item.date.year, item.date.month, item.date.day))
-        .toSet()
-        .length;
-    return math.max(0, elapsedDays - expenseDays).toInt();
   }
 
   List<FlSpot> get cumulativeSpending {
