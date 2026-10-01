@@ -201,12 +201,12 @@ class LocalStorageService {
 
   Future<int> loadBudgetCycleStartDay() async {
     final prefs = await _prefs;
-    return (prefs.getInt(_budgetCycleStartDayKey) ?? 1).clamp(1, 28).toInt();
+    return (prefs.getInt(_budgetCycleStartDayKey) ?? 1).clamp(1, 31).toInt();
   }
 
   Future<void> saveBudgetCycleStartDay(int value) async {
     final prefs = await _prefs;
-    await prefs.setInt(_budgetCycleStartDayKey, value.clamp(1, 28).toInt());
+    await prefs.setInt(_budgetCycleStartDayKey, value.clamp(1, 31).toInt());
   }
 
   Future<String> loadBackupFrequencyName() async {
@@ -309,7 +309,7 @@ class LocalStorageService {
     );
     await prefs.setInt(
       _budgetCycleStartDayKey,
-      ((data['budgetCycleStartDay'] as num?)?.toInt() ?? 1).clamp(1, 28).toInt(),
+      ((data['budgetCycleStartDay'] as num?)?.toInt() ?? 1).clamp(1, 31).toInt(),
     );
 
     for (final key in prefs.getKeys().where((key) => key.startsWith(_alertStatePrefix))) {
