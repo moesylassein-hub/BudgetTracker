@@ -140,8 +140,7 @@ class ImportService {
         final normalized = _normalizeHeader(table.headers[i]);
         if (aliases.any(
           (alias) =>
-              alias.length >= 4 &&
-              (normalized.contains(alias) || alias.contains(normalized)),
+              alias.length >= 4 && normalized.contains(alias),
         )) {
           return i;
         }
