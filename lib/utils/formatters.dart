@@ -33,6 +33,14 @@ class AppFormatters {
   static String shortDate(DateTime value) => DateFormat('d MMM').format(value);
   static String month(DateTime value) => DateFormat('MMMM yyyy').format(value);
   static String weekday(DateTime value) => DateFormat('EEEE, d MMM').format(value);
+  static String dateTime(DateTime value) => DateFormat('d MMM yyyy, h:mm a').format(value);
+
+  static String dateRange(DateTime start, DateTime end) {
+    if (start.year == end.year) {
+      return '${DateFormat('d MMM').format(start)} – ${DateFormat('d MMM yyyy').format(end)}';
+    }
+    return '${DateFormat('d MMM yyyy').format(start)} – ${DateFormat('d MMM yyyy').format(end)}';
+  }
 
   static bool isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
