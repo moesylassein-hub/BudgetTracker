@@ -30,6 +30,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   String _type = 'All';
   ActivityView _view = ActivityView.list;
   DateTime _selectedDate = DateTime.now();
+  late DateTime _activityCycle;
+  late int _cycleStartDay;
+
+  @override
+  void initState() {
+    super.initState();
+    _cycleStartDay = widget.controller.budgetCycleStartDay;
+    _activityCycle = widget.controller.currentCycleStart;
+  }
 
   @override
   void dispose() {
@@ -38,7 +47,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   List<Transaction> _filtered() {
-    return widget.controller.transactions.where((item) {
+    return widget.controller.transactionsForMonth(_activityCycle).where((item) {
       final query = _query.toLowerCase();
       final matchesQuery = query.isEmpty ||
           item.store.toLowerCase().contains(query) ||
@@ -55,6 +64,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   List<Transaction> _selectedDayItems() {
     return widget.controller.transactionsForDay(_selectedDate);
   }
+
+  void _moveCycle(int offset) {
+    final controller = widget.controller;
+    final anchor = DateTime(
+      _activityCycle.year,
+      _activityCycle.month + offset + 1,
+      0,
+    );
+    final next = controller.budgetCycleStartFor(anchor);
+    if (next.isAfter(controller.currentCycleStart)) return;
+    setState(() => _activityCycle = next);
+  }
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<bool> _confirmDelete(Transaction transaction) async {
     final answer = await showDialog<bool>(
@@ -102,6 +126,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
+        if (_cycleStartDay != widget.controller.budgetCycleStartDay) {
+          _cycleStartDay = widget.controller.budgetCycleStartDay;
+          _activityCycle = widget.controller.currentCycleStart;
+        }
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
           children: [
@@ -124,9 +152,32 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget _buildListView(BuildContext context) {
     final items = _filtered();
     final categories = widget.controller.categories.map((item) => item.name).toSet().toList()..sort();
+    final cycleStart = widget.controller.budgetCycleStartFor(_activityCycle);
+    final cycleEnd = widget.controller
+        .budgetCycleEndExclusiveFor(_activityCycle)
+        .subtract(const Duration(days: 1));
+    final isCurrent = _sameDay(
+      cycleStart,
+      widget.controller.currentCycleStart,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _ActivityCycleHeader(
+          start: cycleStart,
+          end: cycleEnd,
+          isCurrent: isCurrent,
+          onPrevious: () => _moveCycle(-1),
+          onNext: isCurrent ? null : () => _moveCycle(1),
+          onCurrent: isCurrent
+              ? null
+              : () => setState(
+                    () => _activityCycle =
+                        widget.controller.currentCycleStart,
+                  ),
+        ),
+        const SizedBox(height: 14),
         TextField(
           controller: _searchController,
           onChanged: (value) => setState(() => _query = value.trim()),
@@ -207,7 +258,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ),
         const SizedBox(height: 8),
         if (items.isEmpty)
-          const _NoResults()
+          _NoResults(
+            hasFilters:
+                _category != 'All' || _query.isNotEmpty || _type != 'All',
+          )
         else
           ...items.map(
             (transaction) => Padding(
@@ -302,6 +356,82 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
+class _ActivityCycleHeader extends StatelessWidget {
+  final DateTime start;
+  final DateTime end;
+  final bool isCurrent;
+  final VoidCallback onPrevious;
+  final VoidCallback? onNext;
+  final VoidCallback? onCurrent;
+
+  const _ActivityCycleHeader({
+    required this.start,
+    required this.end,
+    required this.isCurrent,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onCurrent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous budget cycle',
+              onPressed: onPrevious,
+              icon: const Icon(Icons.chevron_left_rounded),
+            ),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: onCurrent,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        AppFormatters.dateRange(start, end),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isCurrent
+                            ? 'Current budget cycle'
+                            : 'Past cycle • Tap to return to current',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Next budget cycle',
+              onPressed: onNext,
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DayStat extends StatelessWidget {
   final String label;
   final String value;
@@ -335,7 +465,9 @@ class _DayStat extends StatelessWidget {
 }
 
 class _NoResults extends StatelessWidget {
-  const _NoResults();
+  final bool hasFilters;
+
+  const _NoResults({required this.hasFilters});
 
   @override
   Widget build(BuildContext context) {
@@ -343,11 +475,31 @@ class _NoResults extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 54),
       child: Column(
         children: [
-          Icon(Icons.search_off_rounded, size: 52, color: Theme.of(context).colorScheme.primary),
+          Icon(
+            hasFilters
+                ? Icons.search_off_rounded
+                : Icons.receipt_long_outlined,
+            size: 52,
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 14),
-          const Text('Nothing found', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          Text(
+            hasFilters ? 'Nothing found' : 'No activity this cycle',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text('Try a different search, type, or category.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            hasFilters
+                ? 'Try a different search, type, or category.'
+                : 'Transactions from other cycles stay out of the way.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
