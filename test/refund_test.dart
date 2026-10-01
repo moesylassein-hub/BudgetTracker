@@ -35,8 +35,8 @@ class MemoryStorage extends LocalStorageService {
 }
 
 num numericCell(CellValue? cell) => switch (cell) {
-  IntCellValue cell => cell.value,
-  DoubleCellValue cell => cell.value,
+  IntCellValue(:final value) => value,
+  DoubleCellValue(:final value) => value,
   _ => throw StateError('Expected a numeric spreadsheet cell'),
 };
 
