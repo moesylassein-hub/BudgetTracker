@@ -5,8 +5,9 @@ A production-oriented Flutter budget tracker for Android with income and expense
 ## Product highlights
 
 - Income and expense tracking with separate categories
+- Recurring income and expenses for salary, allowance, rent, subscriptions and other regular payments
 - Built-in income categories for Salary, Freelance, Refunds, Gifts, and Other Income
-- Custom budget cycles: choose day 1–28 so your money month can follow your salary date
+- Custom budget cycles: choose day 1–31 so your money month can follow your salary date
 - Budget-cycle dashboard with spent/remaining progress
 - Optional category budgets for expense categories
 - Optional local budget notifications at 50%, 80%, and 100% of the monthly budget, plus exceeded category limits
@@ -82,6 +83,20 @@ flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.google
 Use the same `--dart-define` for release builds. Without it the rest of the app works normally, but Settings shows Drive backup as not configured.
 
 Automatic backup defaults to **Daily (recommended)** after the user connects. It only uploads when local data changed and the app is active, so it avoids unnecessary Drive writes. It retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
+
+## Recurring transactions
+
+Settings → **Recurring transactions** can automate regular income and expenses.
+
+- Create monthly salary/allowance entries on any day from 1–31.
+- Create weekly recurring income or expenses on a selected weekday.
+- Monthly dates 29–31 automatically fall back to the final valid day in shorter months.
+- Optional start and end dates.
+- Pause/resume and edit future payments without deleting already-created Activity entries.
+- Missed due dates are caught up when the app next opens or resumes.
+- Each occurrence uses a deterministic rule/date ID plus a saved last-generated date, preventing duplicate automatic entries.
+- Monthly recurring income can optionally set the same day as the app's budget-cycle start.
+- Recurring rules are included in private Google Drive backup snapshots. Generated occurrences are normal transactions, so they also appear in Activity, Overview, Reports, Excel and CSV exports.
 
 ## Salary / budget cycles
 
