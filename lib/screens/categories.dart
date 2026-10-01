@@ -187,7 +187,7 @@ class CategoriesScreen extends StatelessWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete category?'),
         content: Text(
-          'Delete “${category.name}”? Categories already used by transactions cannot be deleted until those transactions are moved to another category.',
+          'Delete “${category.name}”? Categories used by transactions or recurring rules cannot be deleted until those references are moved to another category.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
@@ -200,7 +200,7 @@ class CategoriesScreen extends StatelessWidget {
     if (!context.mounted) return;
     if (!deleted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This category is in use, or it is the last category of its type, so it was kept.')),
+        const SnackBar(content: Text('This category is used by a transaction or recurring rule, or it is the last category of its type, so it was kept.')),
       );
     }
   }
