@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/budget_category.dart';
 import '../models/savings_goal.dart';
 import '../models/transaction.dart';
+import '../services/drive_backup_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/notification_service.dart';
+import '../utils/budget_cycle.dart';
 
 class AppController extends ChangeNotifier {
   final LocalStorageService _storage;
   final NotificationService _notifications;
+  final DriveBackupService _driveBackup;
 
-  AppController._(this._storage, this._notifications);
+  AppController._(this._storage, this._notifications, this._driveBackup);
 
   final List<Transaction> _transactions = [];
   final List<BudgetCategory> _categories = [];
@@ -19,12 +24,18 @@ class AppController extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   String _currencyCode = 'EGP';
   bool _budgetAlertsEnabled = false;
+  int _budgetCycleStartDay = 1;
+  BackupFrequency _backupFrequency = BackupFrequency.off;
+  DateTime? _lastDriveBackupAt;
+  bool _backupInProgress = false;
+  String? _backupError;
 
   static Future<AppController> create(
     LocalStorageService storage,
     NotificationService notifications,
+    DriveBackupService driveBackup,
   ) async {
-    final controller = AppController._(storage, notifications);
+    final controller = AppController._(storage, notifications, driveBackup);
     await controller._load();
     await controller._checkBudgetAlerts();
     return controller;
@@ -37,6 +48,25 @@ class AppController extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   String get currencyCode => _currencyCode;
   bool get budgetAlertsEnabled => _budgetAlertsEnabled;
+  int get budgetCycleStartDay => _budgetCycleStartDay;
+  BackupFrequency get backupFrequency => _backupFrequency;
+  DateTime? get lastDriveBackupAt => _lastDriveBackupAt;
+  bool get backupInProgress => _backupInProgress;
+  String? get backupError => _backupError;
+  bool get driveBackupConfigured => _driveBackup.isConfigured;
+  bool get driveBackupConnected => _driveBackup.isConnected;
+  String? get driveAccountEmail => _driveBackup.accountEmail;
+
+  DateTime budgetCycleStartFor(DateTime reference) =>
+      BudgetCycle.startFor(reference, _budgetCycleStartDay);
+
+  DateTime budgetCycleEndExclusiveFor(DateTime reference) =>
+      BudgetCycle.endExclusiveFor(reference, _budgetCycleStartDay);
+
+  DateTime get currentCycleStart => budgetCycleStartFor(DateTime.now());
+  DateTime get currentCycleEndExclusive => budgetCycleEndExclusiveFor(DateTime.now());
+  double get currentCycleProgress =>
+      BudgetCycle.progress(DateTime.now(), _budgetCycleStartDay);
 
   List<BudgetCategory> categoriesForType(TransactionType type) =>
       _categories.where((item) => item.type == type).toList();
@@ -57,8 +87,10 @@ class AppController extends ChangeNotifier {
   }
 
   List<Transaction> transactionsForMonth(DateTime month) {
+    final start = budgetCycleStartFor(month);
+    final end = budgetCycleEndExclusiveFor(month);
     return _transactions
-        .where((item) => item.date.year == month.year && item.date.month == month.month)
+        .where((item) => !item.date.isBefore(start) && item.date.isBefore(end))
         .toList();
   }
 
@@ -117,6 +149,11 @@ class AppController extends ChangeNotifier {
     _themeMode = await _storage.loadThemeMode();
     _currencyCode = await _storage.loadCurrencyCode();
     _budgetAlertsEnabled = await _storage.loadBudgetAlertsEnabled();
+    _budgetCycleStartDay = await _storage.loadBudgetCycleStartDay();
+    _backupFrequency = BackupFrequency.fromName(
+      await _storage.loadBackupFrequencyName(),
+    );
+    _lastDriveBackupAt = await _storage.loadLastDriveBackupAt();
     _sort();
   }
 
@@ -184,7 +221,18 @@ class AppController extends ChangeNotifier {
     _budgetAlertsEnabled = enabled;
     notifyListeners();
     if (enabled) await _checkBudgetAlerts();
+    await _markBackupDirty();
     return true;
+  }
+
+  Future<void> setBudgetCycleStartDay(int value) async {
+    final next = value.clamp(1, 28);
+    if (next == _budgetCycleStartDay) return;
+    await _storage.saveBudgetCycleStartDay(next);
+    _budgetCycleStartDay = next;
+    notifyListeners();
+    await _checkBudgetAlerts();
+    await _markBackupDirty();
   }
 
   Future<void> addCategory(BudgetCategory category) async {
@@ -263,13 +311,133 @@ class AppController extends ChangeNotifier {
     _monthlyBudget = 10000;
     _currencyCode = 'EGP';
     _budgetAlertsEnabled = false;
+    _budgetCycleStartDay = 1;
     notifyListeners();
+    await _markBackupDirty();
+  }
+
+  Future<void> connectDriveBackup() async {
+    _backupError = null;
+    try {
+      await _driveBackup.connect();
+      if (_backupFrequency == BackupFrequency.off) {
+        _backupFrequency = BackupFrequency.daily;
+        await _storage.saveBackupFrequencyName(_backupFrequency.name);
+      }
+      notifyListeners();
+      await backupNow();
+    } catch (error) {
+      _backupError = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> disconnectDriveBackup() async {
+    await _driveBackup.disconnect();
+    notifyListeners();
+  }
+
+  Future<void> setBackupFrequency(BackupFrequency frequency) async {
+    _backupFrequency = frequency;
+    await _storage.saveBackupFrequencyName(frequency.name);
+    notifyListeners();
+    if (frequency != BackupFrequency.off) {
+      unawaited(maybeAutoBackup());
+    }
+  }
+
+  Future<void> backupNow() async {
+    await _performBackup(interactive: true);
+  }
+
+  Future<bool> restoreLatestDriveBackup() async {
+    _backupInProgress = true;
+    _backupError = null;
+    notifyListeners();
+    try {
+      final snapshot = await _driveBackup.downloadLatestSnapshot(interactive: true);
+      if (snapshot == null) return false;
+      await _storage.restoreFinancialSnapshot(snapshot);
+      await _storage.saveDriveBackupDirty(false);
+      await _load();
+      await _checkBudgetAlerts();
+      notifyListeners();
+      return true;
+    } catch (error) {
+      _backupError = error.toString();
+      notifyListeners();
+      rethrow;
+    } finally {
+      _backupInProgress = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> maybeAutoBackup() async {
+    if (_backupInProgress ||
+        _backupFrequency == BackupFrequency.off ||
+        !_driveBackup.isConnected) {
+      return;
+    }
+    if (!await _storage.loadDriveBackupDirty()) return;
+    if (!_backupFrequency.isDue(_lastDriveBackupAt, DateTime.now())) return;
+
+    try {
+      await _performBackup(interactive: false);
+    } catch (error) {
+      _backupError = error.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _performBackup({required bool interactive}) async {
+    if (_backupInProgress) return;
+    _backupInProgress = true;
+    _backupError = null;
+    notifyListeners();
+    try {
+      final uploadedAt = await _driveBackup.uploadSnapshot(
+        _backupSnapshot(),
+        interactive: interactive,
+      );
+      _lastDriveBackupAt = uploadedAt.toLocal();
+      await _storage.saveLastDriveBackupAt(uploadedAt);
+      await _storage.saveDriveBackupDirty(false);
+    } catch (error) {
+      _backupError = error.toString();
+      rethrow;
+    } finally {
+      _backupInProgress = false;
+      notifyListeners();
+    }
+  }
+
+  Map<String, dynamic> _backupSnapshot() => {
+        'schemaVersion': 1,
+        'appVersion': '1.0.0',
+        'generatedAt': DateTime.now().toUtc().toIso8601String(),
+        'transactions': _transactions.map((item) => item.toJson()).toList(),
+        'categories': _categories.map((item) => item.toJson()).toList(),
+        'goals': _goals.map((item) => item.toJson()).toList(),
+        'monthlyBudget': _monthlyBudget,
+        'themeMode': _themeMode.name,
+        'currencyCode': _currencyCode,
+        'budgetAlertsEnabled': _budgetAlertsEnabled,
+        'budgetCycleStartDay': _budgetCycleStartDay,
+      };
+
+  Future<void> _markBackupDirty() async {
+    await _storage.saveDriveBackupDirty(true);
+    unawaited(maybeAutoBackup());
   }
 
   Future<void> _checkBudgetAlerts() async {
     if (!_budgetAlertsEnabled) return;
     final now = DateTime.now();
-    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final cycleStart = budgetCycleStartFor(now);
+    final monthKey =
+        'cycle-${cycleStart.year}-${cycleStart.month.toString().padLeft(2, '0')}-${cycleStart.day.toString().padLeft(2, '0')}';
     final state = await _storage.loadBudgetAlertState(monthKey);
     var overallThreshold = (state['overallThreshold'] as num?)?.toInt() ?? 0;
     final categoryIds = Set<String>.from(
