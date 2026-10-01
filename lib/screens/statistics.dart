@@ -17,10 +17,12 @@ class StatisticsScreen extends StatefulWidget {
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
   late DateTime _month;
+  late int _cycleStartDay;
 
   @override
   void initState() {
     super.initState();
+    _cycleStartDay = widget.controller.budgetCycleStartDay;
     _month = widget.controller.currentCycleStart;
   }
 
@@ -40,6 +42,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       animation: widget.controller,
       builder: (context, _) {
         final controller = widget.controller;
+        if (_cycleStartDay != controller.budgetCycleStartDay) {
+          _cycleStartDay = controller.budgetCycleStartDay;
+          _month = controller.currentCycleStart;
+        }
         final items = controller.transactionsForMonth(_month);
         final expenses = items.where((item) => item.isExpense).toList();
         final incomes = items.where((item) => item.isIncome).toList();
