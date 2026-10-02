@@ -312,7 +312,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                               ],
                             ),
                           );
-                          if (choice == null || !mounted) return;
+                          if (choice == null || !context.mounted) return;
                           discard = choice == 'discard';
                           if (discard) {
                             final confirmed = await showDialog<bool>(
@@ -320,7 +320,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                               builder: (context) => AlertDialog(
                                 title: const Text('Discard unsynced edits?'),
                                 content: const Text(
-                                  'This permanently removes this phone?s unsynced additions, edits and deletions from this shared budget. It does not delete anything already saved to the shared Sheet or change your personal budget.',
+                                  'This permanently removes unsynced additions, edits and deletions saved on this phone for this shared budget. It does not delete anything already saved to the shared Sheet or change your personal budget.',
                                 ),
                                 actions: [
                                   TextButton(
@@ -336,7 +336,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                                 ],
                               ),
                             );
-                            if (confirmed != true || !mounted) return;
+                            if (confirmed != true || !context.mounted) return;
                           }
                         }
                         await _run(
