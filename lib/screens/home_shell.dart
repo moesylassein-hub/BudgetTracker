@@ -108,6 +108,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _editTransaction(Transaction transaction) async {
+    final revision = widget.controller.sharedRevision('transaction:${transaction.id}');
     final updated = await Navigator.of(context).push<Transaction>(
       MaterialPageRoute(
         builder: (_) => AddTransactionScreen(
@@ -117,7 +118,7 @@ class _HomeShellState extends State<HomeShell> {
         ),
       ),
     );
-    if (updated != null) await widget.controller.updateTransaction(updated);
+    if (updated != null) await widget.controller.updateTransaction(updated, revision: revision);
   }
 
   Future<void> _showAddMenu() async {

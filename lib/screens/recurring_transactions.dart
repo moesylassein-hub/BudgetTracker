@@ -478,6 +478,8 @@ class _RecurringTransactionEditorState
   late bool _isActive;
   bool _syncBudgetCycle = false;
   bool _saving = false;
+  String? _revision;
+  String? _cycleRevision;
 
   AppController get controller => widget.controller;
   RecurringTransaction? get existing => widget.recurring;
@@ -486,6 +488,8 @@ class _RecurringTransactionEditorState
   void initState() {
     super.initState();
     final recurring = existing;
+    _revision = recurring == null ? null : controller.sharedRevision('recurring:${recurring.id}');
+    _cycleRevision = controller.sharedRevision('setting:budgetCycleStartDay');
     _type = recurring?.type ?? TransactionType.income;
     _frequency = recurring?.frequency ?? RecurringFrequency.monthly;
     _startDate = recurring?.startDate ?? _today();
@@ -610,13 +614,13 @@ class _RecurringTransactionEditorState
       if (existing == null) {
         await controller.addRecurringTransaction(recurring);
       } else {
-        await controller.updateRecurringTransaction(recurring);
+        await controller.updateRecurringTransaction(recurring, revision: _revision);
       }
 
       if (_syncBudgetCycle &&
           _type == TransactionType.income &&
           _frequency == RecurringFrequency.monthly) {
-        await controller.setBudgetCycleStartDay(_dayOfMonth);
+        await controller.setBudgetCycleStartDay(_dayOfMonth, revision: _cycleRevision);
       }
 
       if (mounted) Navigator.pop(context);

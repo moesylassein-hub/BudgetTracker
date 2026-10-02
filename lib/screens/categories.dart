@@ -16,6 +16,7 @@ class CategoriesScreen extends StatelessWidget {
     BudgetCategory? category,
     TransactionType initialType = TransactionType.expense,
   }) async {
+    final revision = category == null ? null : controller.sharedRevision('category:${category.id}');
     var name = category?.name ?? '';
     var iconKey = category?.iconKey ?? 'category';
     var type = category?.type ?? initialType;
@@ -177,6 +178,7 @@ class CategoriesScreen extends StatelessWidget {
           type: result.type,
           monthlyBudget: result.budget,
         ),
+        revision: revision,
       );
     }
   }

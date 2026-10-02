@@ -17,6 +17,7 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.controller});
 
   Future<void> _editBudget(BuildContext context) async {
+    final revision = controller.sharedRevision('setting:monthlyBudget');
     var budgetText = controller.monthlyBudget.toStringAsFixed(0);
     final value = await showDialog<double>(
       context: context,
@@ -44,10 +45,11 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
-    if (value != null) await controller.setMonthlyBudget(value);
+    if (value != null) await controller.setMonthlyBudget(value, revision: revision);
   }
 
   Future<void> _pickBudgetCycleStartDay(BuildContext context) async {
+    final revision = controller.sharedRevision('setting:budgetCycleStartDay');
     var selected = controller.budgetCycleStartDay;
     final value = await showDialog<int>(
       context: context,
@@ -97,7 +99,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
-    if (value != null) await controller.setBudgetCycleStartDay(value);
+    if (value != null) await controller.setBudgetCycleStartDay(value, revision: revision);
   }
 
   Future<void> _connectDrive(BuildContext context) async {
@@ -200,6 +202,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _pickCurrency(BuildContext context) async {
+    final revision = controller.sharedRevision('setting:currencyCode');
     final selected = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -245,7 +248,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
-    if (selected != null) await controller.setCurrencyCode(selected);
+    if (selected != null) await controller.setCurrencyCode(selected, revision: revision);
   }
 
   Future<void> _toggleAlerts(BuildContext context, bool value) async {
@@ -262,9 +265,11 @@ class SettingsScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear all data?'),
-        content: const Text(
-          'This permanently deletes saved transactions, recurring rules and goals, resets budgets and categories, and turns budget alerts off on this device.',
+        title: Text(controller.sharedBudgetActive ? 'Clear shared budget for everyone?' : 'Clear all data?'),
+        content: Text(
+          controller.sharedBudgetActive
+              ? 'This deletes transactions, recurring rules and goals for everyone using this shared budget and resets its budgets and categories. Your personal budget is kept separately.'
+              : 'This permanently deletes saved transactions, recurring rules and goals, resets budgets and categories, and turns budget alerts off on this device.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
@@ -275,7 +280,7 @@ class SettingsScreen extends StatelessWidget {
     if (confirmed == true) {
       await controller.clearAllData();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Local data cleared.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(controller.sharedBudgetActive ? 'Shared budget cleared; deletions will sync.' : 'Local data cleared.')));
       }
     }
   }
@@ -295,7 +300,7 @@ class SettingsScreen extends StatelessWidget {
               Text('Privacy by design', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 12),
               const Text(
-                'Budget Tracker stores transactions, recurring rules, goals, categories and preferences locally on your device. Receipt text recognition runs on-device. If you explicitly connect Google Drive, the app can also store private backup snapshots in its Google Drive app-data area. This build contains no advertising or analytics SDK. Optional budget alerts use local device notifications only.',
+                'Budget Tracker stores your personal budget on your device. Receipt text recognition runs on-device. Connecting Google Drive enables private backup snapshots. Creating or joining a shared budget syncs its transactions, budgets, categories, goals and recurring entries with a Google Sheet; people with access can see and edit that data. Your personal budget stays separate. This build contains no advertising or analytics SDK. Budget alerts use local device notifications.',
                 style: TextStyle(height: 1.55),
               ),
               const SizedBox(height: 16),

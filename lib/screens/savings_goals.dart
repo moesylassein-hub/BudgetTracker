@@ -11,6 +11,7 @@ class SavingsGoalsScreen extends StatelessWidget {
   const SavingsGoalsScreen({super.key, required this.controller});
 
   Future<void> _editGoal(BuildContext context, {SavingsGoal? goal}) async {
+    final revision = goal == null ? null : controller.sharedRevision('goal:${goal.id}');
     var name = goal?.name ?? '';
     var targetText = goal?.targetAmount.toStringAsFixed(0) ?? '';
     var iconKey = goal?.iconKey ?? 'savings';
@@ -138,6 +139,7 @@ class SavingsGoalsScreen extends StatelessWidget {
           targetAmount: result.targetAmount,
           iconKey: result.iconKey,
         ),
+        revision: revision,
       );
     }
   }

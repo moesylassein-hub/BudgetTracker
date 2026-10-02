@@ -20,6 +20,9 @@ class AppController extends ChangeNotifier {
   final LocalStorageService _personalStorage;
   final NotificationService _notifications;
   final DriveBackupService _driveBackup;
+  LocalStorageService Function(String) _workspaceStorage =
+      (id) => LocalStorageService(workspaceId: id);
+  SheetSyncService Function()? _sharedServiceFactory;
 
   AppController._(LocalStorageService storage, this._notifications, this._driveBackup)
       : _storage = storage, _personalStorage = storage;
@@ -34,7 +37,10 @@ class AppController extends ChangeNotifier {
   Future<void> _operation = Future.value();
 
   Future<T> _serial<T>(Future<T> Function() action) {
-    final next = _operation.then((_) => action());
+    final next = _operation.then((_) async {
+      if (_shared?.pendingApplication != null) await _applySharedSnapshot();
+      return action();
+    });
     _operation = next.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
     return next;
   }
@@ -48,6 +54,26 @@ class AppController extends ChangeNotifier {
   DateTime? get sharedLastSynced => _shared?.lastSynced;
   int get sharedPendingCount => _shared?.pending.length ?? 0;
   Map<String, List<SheetChange>> get sharedConflicts => _shared?.ledger.conflicts ?? {};
+  String? sharedRevision(String entity) => _shared?.ledger.heads[entity]?.last.revision;
+
+  Future<void> _applySharedSnapshot() async {
+    final service = _shared!;
+    final snapshot = service.pendingApplication ?? service.ledger.snapshot(_backupSnapshot());
+    await service.beginApplication(snapshot);
+    await _storage.restoreFinancialSnapshot(snapshot);
+    await _load();
+    await service.finishApplication();
+  }
+
+  Future<bool> _recordStaleEdit(String entity, Map<String, dynamic> value, String? revision) async {
+    final service = _shared;
+    if (service == null || revision == null || sharedRevision(entity) == revision) return false;
+    await service.recordVersion(entity, value, revision);
+    await _applySharedSnapshot();
+    notifyListeners();
+    _scheduleSync();
+    return true;
+  }
 
   void setAppActive(bool active) {
     _appActive = active;
@@ -61,12 +87,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _restoreSharedSelection() async {
-    final service = SheetSyncService(_driveBackup.sharedSheetHeaders);
+    final service = _sharedServiceFactory?.call() ?? SheetSyncService(_driveBackup.sharedSheetHeaders);
     try {
       await service.restore();
       if (service.active) {
         _shared = service;
-        _storage = LocalStorageService(workspaceId: service.sheetId!);
+        _storage = _workspaceStorage(service.sheetId!);
       } else {
         service.dispose();
       }
@@ -78,7 +104,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> openSharedBudget({String? link, String? name}) => _serial(() async {
     if (_shared != null) throw StateError('Switch to your personal budget before opening another Sheet.');
-    final service = SheetSyncService(_driveBackup.sharedSheetHeaders);
+    final service = _sharedServiceFactory?.call() ?? SheetSyncService(_driveBackup.sharedSheetHeaders);
     try {
       await _driveBackup.sharedSheetHeaders(interactive: true);
       final email = _driveBackup.accountEmail!;
@@ -88,7 +114,7 @@ class AppController extends ChangeNotifier {
         if (name == null || name.trim().isEmpty) throw StateError('Enter a budget name.');
         await service.create(name, _backupSnapshot(), email);
       }
-      final storage = LocalStorageService(workspaceId: service.sheetId!);
+      final storage = _workspaceStorage(service.sheetId!);
       final snapshot = service.ledger.snapshot(_backupSnapshot());
       await storage.restoreFinancialSnapshot(snapshot);
       await service.persist(activate: true);
@@ -127,8 +153,7 @@ class AppController extends ChangeNotifier {
     final service = _shared;
     if (service == null) return;
     await service.resolve(entity, choice);
-    await _storage.restoreFinancialSnapshot(service.ledger.snapshot(_backupSnapshot()));
-    await _load();
+    await _applySharedSnapshot();
     notifyListeners();
     _scheduleSync();
   });
@@ -142,10 +167,14 @@ class AppController extends ChangeNotifier {
     try {
       // Recover local edits even if the app stopped between a DB write and
       // recording its outbox. Local state is never replaced before journaling.
+      if (interactive) {
+        await _driveBackup.sharedSheetHeaders(interactive: true);
+        service.accountEmail = _driveBackup.accountEmail;
+      }
       await service.record(_backupSnapshot());
       await service.sync(interactive: interactive);
-      await _storage.restoreFinancialSnapshot(service.ledger.snapshot(_backupSnapshot()));
-      await _load();
+      await _applySharedSnapshot();
+      await _processRecurringTransactions();
     } catch (error) {
       _syncError = 'Sync paused: $error';
     } finally {
@@ -186,37 +215,42 @@ class AppController extends ChangeNotifier {
     LocalStorageService storage,
     NotificationService notifications,
     DriveBackupService driveBackup,
+    {LocalStorageService Function(String)? workspaceStorage,
+    SheetSyncService Function()? sharedServiceFactory,}
   ) async {
     final controller = AppController._(storage, notifications, driveBackup);
+    if (workspaceStorage != null) controller._workspaceStorage = workspaceStorage;
+    controller._sharedServiceFactory = sharedServiceFactory;
     await controller._restoreSharedSelection();
     await controller._load();
+    if (controller._shared?.pendingApplication != null) {
+      await controller._applySharedSnapshot();
+    }
     return controller;
   }
 
   Future<void> addTransaction(Transaction transaction) => _serial(() => _addTransaction(transaction));
-  Future<void> updateTransaction(Transaction transaction) => _serial(() => _updateTransaction(transaction));
+  Future<void> updateTransaction(Transaction transaction, {String? revision}) => _serial(() => _updateTransaction(transaction, revision: revision));
   Future<void> deleteTransaction(String id) => _serial(() => _deleteTransaction(id));
   Future<void> importTransactions(
     List<Transaction> transactions,
   ) => _serial(() => _importTransactions(transactions));
-  Future<void> setMonthlyBudget(double value) => _serial(() => _setMonthlyBudget(value));
+  Future<void> setMonthlyBudget(double value, {String? revision}) => _serial(() => _setMonthlyBudget(value, revision: revision));
   Future<void> setThemeMode(ThemeMode mode) => _serial(() => _setThemeMode(mode));
-  Future<void> setCurrencyCode(String code) => _serial(() => _setCurrencyCode(code));
+  Future<void> setCurrencyCode(String code, {String? revision}) => _serial(() => _setCurrencyCode(code, revision: revision));
   Future<bool> setBudgetAlertsEnabled(bool enabled) => _serial(() => _setBudgetAlertsEnabled(enabled));
-  Future<void> setBudgetCycleStartDay(int value) => _serial(() => _setBudgetCycleStartDay(value));
+  Future<void> setBudgetCycleStartDay(int value, {String? revision}) => _serial(() => _setBudgetCycleStartDay(value, revision: revision));
   Future<void> addCategory(BudgetCategory category) => _serial(() => _addCategory(category));
-  Future<void> updateCategory(BudgetCategory category) => _serial(() => _updateCategory(category));
+  Future<void> updateCategory(BudgetCategory category, {String? revision}) => _serial(() => _updateCategory(category, revision: revision));
   Future<bool> deleteCategory(String id) => _serial(() => _deleteCategory(id));
   Future<void> addGoal(SavingsGoal goal) => _serial(() => _addGoal(goal));
-  Future<void> updateGoal(SavingsGoal goal) => _serial(() => _updateGoal(goal));
+  Future<void> updateGoal(SavingsGoal goal, {String? revision}) => _serial(() => _updateGoal(goal, revision: revision));
   Future<void> deleteGoal(String id) => _serial(() => _deleteGoal(id));
   Future<void> changeGoalSavings(String id, double delta) => _serial(() => _changeGoalSavings(id, delta));
   Future<void> addRecurringTransaction(
     RecurringTransaction recurring,
   ) => _serial(() => _addRecurringTransaction(recurring));
-  Future<void> updateRecurringTransaction(
-    RecurringTransaction recurring,
-  ) => _serial(() => _updateRecurringTransaction(recurring));
+  Future<void> updateRecurringTransaction(RecurringTransaction recurring, {String? revision}) => _serial(() => _updateRecurringTransaction(recurring, revision: revision));
   Future<void> setRecurringTransactionActive(
     String id,
     bool active,
@@ -411,7 +445,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _updateTransaction(Transaction transaction) async {
+  Future<void> _updateTransaction(Transaction transaction, {String? revision}) async {
+    if (await _recordStaleEdit('transaction:${transaction.id}', transaction.toJson(), revision)) return;
     final index = _transactions.indexWhere((item) => item.id == transaction.id);
     if (index == -1) return;
 
@@ -517,7 +552,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _setMonthlyBudget(double value) async {
+  Future<void> _setMonthlyBudget(double value, {String? revision}) async {
+    if (await _recordStaleEdit('setting:monthlyBudget', {'value': value}, revision)) return;
     if (value <= 0) return;
     await _storage.saveBudget(value);
     _monthlyBudget = value;
@@ -533,7 +569,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _setCurrencyCode(String code) async {
+  Future<void> _setCurrencyCode(String code, {String? revision}) async {
+    if (await _recordStaleEdit('setting:currencyCode', {'value': code}, revision)) return;
     await _storage.saveCurrencyCode(code);
     _currencyCode = code;
     notifyListeners();
@@ -553,7 +590,8 @@ class AppController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> _setBudgetCycleStartDay(int value) async {
+  Future<void> _setBudgetCycleStartDay(int value, {String? revision}) async {
+    if (await _recordStaleEdit('setting:budgetCycleStartDay', {'value': value}, revision)) return;
     final next = value.clamp(1, 31).toInt();
     if (next == _budgetCycleStartDay) return;
     await _storage.saveBudgetCycleStartDay(next);
@@ -570,7 +608,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _updateCategory(BudgetCategory category) async {
+  Future<void> _updateCategory(BudgetCategory category, {String? revision}) async {
+    if (await _recordStaleEdit('category:${category.id}', category.toJson(), revision)) return;
     final index = _categories.indexWhere((item) => item.id == category.id);
     if (index == -1) return;
     final old = _categories[index];
@@ -620,7 +659,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _updateGoal(SavingsGoal goal) async {
+  Future<void> _updateGoal(SavingsGoal goal, {String? revision}) async {
+    if (await _recordStaleEdit('goal:${goal.id}', goal.toJson(), revision)) return;
     final index = _goals.indexWhere((item) => item.id == goal.id);
     if (index == -1) return;
     _goals[index] = goal;
@@ -657,9 +697,8 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> _updateRecurringTransaction(
-    RecurringTransaction recurring,
-  ) async {
+  Future<void> _updateRecurringTransaction(RecurringTransaction recurring, {String? revision}) async {
+    if (await _recordStaleEdit('recurring:${recurring.id}', recurring.toJson(), revision)) return;
     final index =
         _recurringTransactions.indexWhere((item) => item.id == recurring.id);
     if (index == -1) return;
@@ -881,7 +920,7 @@ class AppController extends ChangeNotifier {
 
   Map<String, dynamic> _backupSnapshot() => {
         'schemaVersion': 2,
-        'appVersion': '1.0.0',
+        'appVersion': '1.1.0',
         'generatedAt': DateTime.now().toUtc().toIso8601String(),
         'transactions': _transactions.map((item) => item.toJson()).toList(),
         'categories': _categories.map((item) => item.toJson()).toList(),

@@ -17,6 +17,7 @@ class SheetSyncService {
   String? title;
   String? accountEmail;
   DateTime? lastSynced;
+  Map<String, dynamic>? pendingApplication;
   final ledger = SheetLedger();
   final List<SheetChange> pending = [];
   final Set<String> _seenIds = {};
@@ -51,6 +52,9 @@ class SheetSyncService {
     title = data['title'] as String?;
     accountEmail = data['accountEmail'] as String?;
     lastSynced = DateTime.tryParse(data['lastSynced'] as String? ?? '');
+    pendingApplication = data['application'] == null
+        ? null
+        : Map<String, dynamic>.from(data['application'] as Map);
     ledger.addAll(
       (data['changes'] as List).map(
         (raw) => SheetChange.fromJson(Map<String, dynamic>.from(raw as Map)),
@@ -78,6 +82,7 @@ class SheetSyncService {
             .toList(),
         'pending': pending.map((change) => change.toJson()).toList(),
         'seen': _seenIds.toList(),
+        'application': pendingApplication,
       }),
     );
     if (!saved) {
@@ -96,6 +101,16 @@ class SheetSyncService {
     if (!await prefs.remove(_activeKey)) {
       throw StateError('Could not switch to personal budget.');
     }
+  }
+
+  Future<void> beginApplication(Map<String, dynamic> snapshot) async {
+    pendingApplication = snapshot;
+    await persist();
+  }
+
+  Future<void> finishApplication() async {
+    pendingApplication = null;
+    await persist();
   }
 
   Future<http.Response> _request(
@@ -253,6 +268,23 @@ class SheetSyncService {
       parents: heads.map((head) => head.revision).toList()..sort(),
       author: accountEmail ?? 'Budget Tracker',
       value: choice.value,
+    );
+    ledger.addAll([change]);
+    pending.add(change);
+    await persist();
+  }
+
+  Future<void> recordVersion(
+    String entity,
+    Map<String, dynamic> value,
+    String parent,
+  ) async {
+    final change = SheetChange(
+      id: newChangeId(),
+      entity: entity,
+      parents: [parent],
+      author: accountEmail ?? 'Budget Tracker',
+      value: value,
     );
     ledger.addAll([change]);
     pending.add(change);

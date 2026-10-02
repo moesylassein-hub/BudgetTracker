@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:budget_tracker/models/sheet_change.dart';
+import 'package:budget_tracker/controllers/app_controller.dart';
 import 'package:budget_tracker/models/transaction.dart';
 import 'package:budget_tracker/services/local_storage_service.dart';
 import 'package:budget_tracker/services/sheet_sync_service.dart';
+import 'package:budget_tracker/services/drive_backup_service.dart';
+import 'package:budget_tracker/services/notification_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -89,6 +92,34 @@ class SheetServer {
         )
         ..sheetId = sheetId
         ..accountEmail = email;
+}
+
+class WorkspaceStorage extends LocalStorageService {
+  final List<Transaction> items;
+  WorkspaceStorage(this.items, {super.workspaceId});
+  @override
+  Future<List<Transaction>> loadTransactions() async => List.of(items);
+  @override
+  Future<void> updateTransaction(Transaction transaction) async {
+    items[items.indexWhere((item) => item.id == transaction.id)] = transaction;
+  }
+
+  @override
+  Future<void> insertTransaction(Transaction transaction) async =>
+      items.add(transaction);
+  @override
+  Future<void> restoreFinancialSnapshot(Map<String, dynamic> data) async {
+    items
+      ..clear()
+      ..addAll(
+        (data['transactions'] as List).map(
+          (raw) => Transaction.fromJson(Map<String, dynamic>.from(raw as Map)),
+        ),
+      );
+    await saveBudget((data['monthlyBudget'] as num).toDouble());
+    await saveCurrencyCode(data['currencyCode'] as String);
+    await saveBudgetCycleStartDay(data['budgetCycleStartDay'] as int);
+  }
 }
 
 void main() {
@@ -287,4 +318,84 @@ void main() {
     expect(restored.revision, original.revision);
     expect(restored.value!['store'], tx.store);
   });
+
+  test(
+    'download application marker survives restart until completion',
+    () async {
+      final server = SheetServer();
+      final phone = server.phone('one@example.com');
+      addTearDown(phone.dispose);
+      await phone.record(snapshot([item('travel', 1000)]));
+      await phone.persist(activate: true);
+      await phone.beginApplication(snapshot([item('travel', -800)]));
+      final restarted = server.phone('one@example.com');
+      addTearDown(restarted.dispose);
+      await restarted.restore();
+      expect(restarted.pendingApplication!['transactions'][0]['amount'], -800);
+      await restarted.finishApplication();
+      final again = server.phone('one@example.com');
+      addTearDown(again.dispose);
+      await again.restore();
+      expect(again.pendingApplication, isNull);
+    },
+  );
+
+  test(
+    'app applies shared data, preserves stale editor changes and returns to personal data',
+    () async {
+      final server = SheetServer();
+      final seed = server.phone('one@example.com');
+      addTearDown(seed.dispose);
+      await seed.record(snapshot([item('travel', 1000)]));
+      await seed.sync();
+      await seed.persist(activate: true);
+      final personal = WorkspaceStorage([item('personal', 500)]);
+      final shared = WorkspaceStorage([
+        item('travel', 1000),
+      ], workspaceId: sheetId);
+      await shared.saveBudgetCycleStartDay(25);
+      final app = await AppController.create(
+        personal,
+        NotificationService(),
+        DriveBackupService(),
+        workspaceStorage: (_) => shared,
+        sharedServiceFactory: () => server.phone('one@example.com'),
+      );
+      addTearDown(app.dispose);
+      app.setAppActive(false);
+      expect(app.sharedBudgetActive, isTrue);
+      expect(app.transactions.single.id, 'travel');
+      final editorRevision = app.sharedRevision('transaction:travel')!;
+      final other = server.phone('two@example.com');
+      addTearDown(other.dispose);
+      await other.sync();
+      await other.recordVersion(
+        'transaction:travel',
+        item('travel', 900).toJson(),
+        editorRevision,
+      );
+      await other.sync();
+      await app.syncSharedBudget();
+      expect(app.sharedSyncError, isNull);
+      expect(app.transactions.single.amount, 900);
+      // The editor was opened at 1000; it must not silently overwrite 900.
+      await app.updateTransaction(
+        item('travel', -800),
+        revision: editorRevision,
+      );
+      expect(app.sharedConflicts['transaction:travel']!.length, 2);
+      final refund = app.sharedConflicts['transaction:travel']!.firstWhere(
+        (v) => v.value!['amount'] == -800,
+      );
+      await app.resolveSharedConflict('transaction:travel', refund);
+      await app.syncSharedBudget();
+      expect(app.currentMonthSpent, -800);
+      expect(app.currentMonthIncome, 0);
+      expect(app.sharedPendingCount, 0);
+      await app.leaveSharedBudget();
+      expect(app.sharedBudgetActive, isFalse);
+      expect(app.transactions.single.id, 'personal');
+      expect(personal.items.single.amount, 500);
+    },
+  );
 }
