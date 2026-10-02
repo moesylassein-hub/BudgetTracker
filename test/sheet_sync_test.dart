@@ -166,7 +166,8 @@ void main() {
         NotificationService(),
         DriveBackupService(),
         workspaceStorage: (_) => shared,
-        sharedServiceFactory: () => server.phone('one@example.com'),
+        sharedServiceFactory: () =>
+            server.phone('one@example.com')..sheetId = null,
       );
       addTearDown(restarted.dispose);
       expect(restarted.sharedBudgetActive, isFalse);
@@ -377,7 +378,7 @@ void main() {
       expect(await shared.loadBudget(), 7000);
       final restarted = server.phone('one@example.com');
       addTearDown(restarted.dispose);
-      await restarted.restore();
+      await restarted.restore(sheet: sheetId);
       server.offline = false;
       await restarted.sync();
       expect(restarted.ledger.entities['transaction:refund']!['amount'], -800);
