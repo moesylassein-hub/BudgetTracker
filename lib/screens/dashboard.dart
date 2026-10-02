@@ -170,6 +170,7 @@ class DashboardScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TransactionCard(
                     transaction: transaction,
+                    authorship: controller.transactionAuthorship(transaction.id),
                     currencyCode: controller.currencyCode,
                     iconKey: controller.categoryByName(transaction.category)?.iconKey,
                     onTap: () => onEdit(transaction),

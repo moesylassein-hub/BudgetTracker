@@ -16,6 +16,35 @@ class SheetSyncService {
   String? sheetId;
   String? title;
   String? accountEmail;
+  String displayName = '';
+  String get editor => displayName.isEmpty
+      ? accountEmail ?? 'Unknown'
+      : '$displayName <${accountEmail ?? 'Unknown'}>';
+
+  Future<void> setAccount(String email) async {
+    accountEmail = email;
+    final prefs = await SharedPreferences.getInstance();
+    displayName = prefs.getString('shared_editor_name_v1_$email') ?? '';
+  }
+
+  Future<void> setDisplayName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.length > 60 || trimmed.contains(RegExp(r'[<>\r\n]'))) {
+      throw const FormatException(
+        'Use a name up to 60 characters without angle brackets or line breaks.',
+      );
+    }
+    if (accountEmail == null) throw StateError('Connect Google first.');
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString(
+      'shared_editor_name_v1_$accountEmail',
+      trimmed,
+    )) {
+      throw StateError('Could not save your display name.');
+    }
+    displayName = trimmed;
+  }
+
   DateTime? lastSynced;
   Map<String, dynamic>? pendingApplication;
   final ledger = SheetLedger();
@@ -50,7 +79,8 @@ class SheetSyncService {
     }
     final data = jsonDecode(raw) as Map;
     title = data['title'] as String?;
-    accountEmail = data['accountEmail'] as String?;
+    final email = data['accountEmail'] as String?;
+    if (email != null) await setAccount(email);
     lastSynced = DateTime.tryParse(data['lastSynced'] as String? ?? '');
     pendingApplication = data['application'] == null
         ? null
@@ -187,7 +217,7 @@ class SheetSyncService {
     final created = jsonDecode(response.body) as Map;
     sheetId = created['spreadsheetId'] as String;
     title = name.trim();
-    accountEmail = email;
+    await setAccount(email);
     await _request(
       'POST',
       'sheets.googleapis.com',
@@ -226,7 +256,7 @@ class SheetSyncService {
         ],
       },
     );
-    final changes = ledger.edits(snapshot, email);
+    final changes = ledger.edits(snapshot, editor);
     ledger.addAll(changes);
     pending.addAll(changes);
     // Save the outbox before the first upload, so an interrupted upload is retryable.
@@ -236,7 +266,7 @@ class SheetSyncService {
 
   Future<void> join(String input, String email) async {
     sheetId = parseId(input);
-    accountEmail = email;
+    await setAccount(email);
     await sync(interactive: true);
     final metadata = await _request(
       'GET',
@@ -250,7 +280,7 @@ class SheetSyncService {
   }
 
   Future<void> record(Map<String, dynamic> snapshot) async {
-    final changes = ledger.edits(snapshot, accountEmail ?? 'Budget Tracker');
+    final changes = ledger.edits(snapshot, editor);
     if (changes.isEmpty) return;
     ledger.addAll(changes);
     pending.addAll(changes);
@@ -266,7 +296,7 @@ class SheetSyncService {
       id: newChangeId(),
       entity: entity,
       parents: heads.map((head) => head.revision).toList()..sort(),
-      author: accountEmail ?? 'Budget Tracker',
+      author: editor,
       value: choice.value,
     );
     ledger.addAll([change]);
@@ -283,7 +313,7 @@ class SheetSyncService {
       id: newChangeId(),
       entity: entity,
       parents: [parent],
-      author: accountEmail ?? 'Budget Tracker',
+      author: editor,
       value: value,
     );
     ledger.addAll([change]);

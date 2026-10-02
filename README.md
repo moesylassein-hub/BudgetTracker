@@ -159,3 +159,5 @@ Currency switching is display-only: changing from EGP to USD/EUR/etc. does not c
 ## Play Store materials
 
 See `PLAY_STORE_RELEASE_CHECKLIST.md`, `PRIVACY_POLICY.md`, `store_assets/STORE_LISTING.md`, and `store_assets/DATA_SAFETY_NOTES.md`.
+
+Shared transaction cards show Added by and Last edited by from the shared change history. Each participant can set Your display name in Shared budget; future revisions include the name and Google email. Earlier revisions keep their recorded author. Direct Sheet edits use the Editor cell, so these labels are attribution rather than a verified audit trail.

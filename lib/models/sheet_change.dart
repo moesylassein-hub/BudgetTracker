@@ -253,6 +253,41 @@ class SheetLedger {
     return result;
   }
 
+  String? authorship(String entity) {
+    final versions = heads[entity];
+    if (versions == null || versions.isEmpty) return null;
+    final latest = versions.last;
+    final creators = <String>{};
+    final visited = <String>{};
+    void visit(SheetChange change) {
+      if (!visited.add(change.revision)) return;
+      if (change.parents.isEmpty) {
+        creators.add(change.author);
+      } else {
+        for (final parent in change.parents) {
+          final previous = changes[parent];
+          if (previous == null) {
+            creators.add('Unknown');
+          } else {
+            visit(previous);
+          }
+        }
+      }
+    }
+
+    visit(latest);
+    String label(String author) {
+      final match = RegExp(r'^(.+) <[^<>]+>$').firstMatch(author);
+      return match?.group(1) ?? (author.isEmpty ? 'Unknown' : author);
+    }
+
+    final names = creators.map(label).toSet().toList()..sort();
+    final added = 'Added by ${names.join(' / ')}';
+    return latest.parents.isEmpty
+        ? added
+        : '$added\nLast edited by ${label(latest.author)}';
+  }
+
   Map<String, List<SheetChange>> get conflicts => Map.fromEntries(
     heads.entries.where(
       (entry) =>

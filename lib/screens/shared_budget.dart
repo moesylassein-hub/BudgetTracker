@@ -182,6 +182,29 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                 'Google account: ${app.driveAccountEmail ?? 'Reconnect to sync'}',
               ),
               const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Your display name'),
+                subtitle: Text(
+                  app.sharedDisplayName.isEmpty
+                      ? 'Using your Google email'
+                      : app.sharedDisplayName,
+                ),
+                trailing: const Icon(Icons.edit),
+                onTap: disabled
+                    ? null
+                    : () async {
+                        final name = await _ask(
+                          'Your display name',
+                          'Name',
+                          message:
+                              'Shown on your new additions and edits. Your Google email stays in the shared history.',
+                        );
+                        if (name != null && mounted) {
+                          await _run(() => app.setSharedDisplayName(name));
+                        }
+                      },
+              ),
               Text('${app.sharedPendingCount} changes waiting to sync'),
               Text(
                 app.sharedLastSynced == null

@@ -54,6 +54,13 @@ class AppController extends ChangeNotifier {
   DateTime? get sharedLastSynced => _shared?.lastSynced;
   int get sharedPendingCount => _shared?.pending.length ?? 0;
   Map<String, List<SheetChange>> get sharedConflicts => _shared?.ledger.conflicts ?? {};
+  String get sharedDisplayName => _shared?.displayName ?? '';
+  String? transactionAuthorship(String id) => _shared?.ledger.authorship('transaction:$id');
+  Future<void> setSharedDisplayName(String name) => _serial(() async {
+    if (_shared == null) throw StateError('Open a shared budget first.');
+    await _shared!.setDisplayName(name);
+    notifyListeners();
+  });
   String? sharedRevision(String entity) => _shared?.ledger.heads[entity]?.last.revision;
 
   Future<void> _applySharedSnapshot() async {
@@ -169,7 +176,7 @@ class AppController extends ChangeNotifier {
       // recording its outbox. Local state is never replaced before journaling.
       if (interactive) {
         await _driveBackup.sharedSheetHeaders(interactive: true);
-        service.accountEmail = _driveBackup.accountEmail;
+        await service.setAccount(_driveBackup.accountEmail!);
       }
       await service.record(_backupSnapshot());
       await service.sync(interactive: interactive, localSnapshot: _backupSnapshot());

@@ -59,3 +59,5 @@ If the app's data practices change, this privacy policy should be updated before
 Before publishing this policy, replace this section with a real support email address that users can contact with privacy questions.
 
 **Support email:** `REPLACE_WITH_YOUR_SUPPORT_EMAIL`
+
+Shared budgets also store an optional display name alongside the editor email in new change-history entries. These names are visible to other editors and remain in previous revisions when the name changes.

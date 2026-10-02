@@ -127,6 +127,87 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
+    'author names sync, retain the creator and survive restart per account',
+    () async {
+      final server = SheetServer();
+      final one = server.phone('one@example.com');
+      final two = server.phone('two@example.com');
+      addTearDown(one.dispose);
+      addTearDown(two.dispose);
+      await one.setDisplayName('Mohamed');
+      await one.record(snapshot([item('travel', 1000)]));
+      await one.sync();
+      await two.sync();
+      expect(two.ledger.authorship('transaction:travel'), 'Added by Mohamed');
+      await two.setDisplayName('Ahmed');
+      await two.record(snapshot([item('travel', -800)]));
+      await two.sync();
+      await one.sync();
+      expect(
+        one.ledger.authorship('transaction:travel'),
+        'Added by Mohamed\nLast edited by Ahmed',
+      );
+      expect(
+        one.ledger.heads['transaction:travel']!.last.author,
+        'Ahmed <two@example.com>',
+      );
+      await one.persist(activate: true);
+      final restarted = server.phone('one@example.com');
+      addTearDown(restarted.dispose);
+      await restarted.restore();
+      expect(restarted.displayName, 'Mohamed');
+      await restarted.setAccount('two@example.com');
+      expect(restarted.displayName, 'Ahmed');
+      await restarted.setAccount('new@example.com');
+      expect(restarted.displayName, isEmpty);
+      expect(restarted.editor, 'new@example.com');
+      await expectLater(
+        restarted.setDisplayName('Bad <name>'),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
+    'conflict resolution retains creator attribution and missing history is unknown',
+    () {
+      final original = change('original', item('travel', 1000));
+      final edit = SheetChange(
+        id: 'edit',
+        entity: original.entity,
+        parents: [original.revision],
+        author: 'Ahmed <two@example.com>',
+        value: item('travel', 900).toJson(),
+      );
+      final other = SheetChange(
+        id: 'other',
+        entity: original.entity,
+        parents: [original.revision],
+        author: 'Mohamed <one@example.com>',
+        value: item('travel', -800).toJson(),
+      );
+      final resolved = SheetChange(
+        id: 'resolved',
+        entity: original.entity,
+        parents: [edit.revision, other.revision],
+        author: 'Resolver <three@example.com>',
+        value: other.value,
+      );
+      final ledger = SheetLedger()..addAll([original, edit, other, resolved]);
+      expect(
+        ledger.authorship(original.entity),
+        'Added by one@example.com\nLast edited by Resolver',
+      );
+      expect(ledger.authorship('transaction:missing'), isNull);
+      final incomplete = SheetLedger()..addAll([edit]);
+      expect(
+        incomplete.authorship(original.entity),
+        'Added by Unknown\nLast edited by Ahmed',
+      );
+    },
+  );
+
+  test(
     'different Google accounts sync additions, signed refunds, edits and deletions',
     () async {
       final server = SheetServer();

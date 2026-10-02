@@ -8,6 +8,7 @@ class TransactionCard extends StatelessWidget {
   final Transaction transaction;
   final String currencyCode;
   final String? iconKey;
+  final String? authorship;
   final VoidCallback? onTap;
 
   const TransactionCard({
@@ -15,6 +16,7 @@ class TransactionCard extends StatelessWidget {
     required this.transaction,
     required this.currencyCode,
     this.iconKey,
+    this.authorship,
     this.onTap,
   });
 
@@ -66,6 +68,13 @@ class TransactionCard extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
+                    if (authorship != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        authorship!,
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+                      ),
+                    ],
                   ],
                 ),
               ),
