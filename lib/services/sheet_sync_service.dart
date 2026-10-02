@@ -352,10 +352,22 @@ class SheetSyncService {
     );
   }
 
-  Future<void> sync({bool interactive = false}) async {
+  Future<void> sync({
+    bool interactive = false,
+    Map<String, dynamic>? localSnapshot,
+  }) async {
+    Future<void> checkpoint() async {
+      // Store downloaded state and its application marker together. A restart
+      // must apply this state before interpreting the older database as edits.
+      if (localSnapshot != null) {
+        pendingApplication = ledger.snapshot(localSnapshot);
+      }
+      await persist();
+    }
+
     final remote = await _read(interactive: interactive);
     _merge(remote);
-    await persist();
+    await checkpoint();
     if (pending.isNotEmpty) {
       // Never reuse a remotely edited row ID after an uncertain upload.
       final remoteIds = remote.map((change) => change.id).toSet();
@@ -384,7 +396,7 @@ class SheetSyncService {
         }
       }
       ledger.addAll(pending);
-      await persist();
+      await checkpoint();
       final upload = List<SheetChange>.of(pending);
       await _request(
         'POST',
@@ -395,7 +407,7 @@ class SheetSyncService {
       );
       // Re-read before acknowledging; a timeout can mean the append succeeded.
       _merge(await _read());
-      await persist();
+      await checkpoint();
     }
     lastSynced = DateTime.now();
     await persist();

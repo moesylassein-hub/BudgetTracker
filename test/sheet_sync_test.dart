@@ -327,7 +327,14 @@ void main() {
       addTearDown(phone.dispose);
       await phone.record(snapshot([item('travel', 1000)]));
       await phone.persist(activate: true);
-      await phone.beginApplication(snapshot([item('travel', -800)]));
+      await phone.sync();
+      await phone.finishApplication();
+      final other = server.phone('two@example.com');
+      addTearDown(other.dispose);
+      await other.sync();
+      await other.record(snapshot([item('travel', -800)]));
+      await other.sync();
+      await phone.sync(localSnapshot: snapshot([item('travel', 1000)]));
       final restarted = server.phone('one@example.com');
       addTearDown(restarted.dispose);
       await restarted.restore();

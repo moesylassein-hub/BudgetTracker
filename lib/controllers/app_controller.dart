@@ -172,7 +172,7 @@ class AppController extends ChangeNotifier {
         service.accountEmail = _driveBackup.accountEmail;
       }
       await service.record(_backupSnapshot());
-      await service.sync(interactive: interactive);
+      await service.sync(interactive: interactive, localSnapshot: _backupSnapshot());
       await _applySharedSnapshot();
       await _processRecurringTransactions();
     } catch (error) {
