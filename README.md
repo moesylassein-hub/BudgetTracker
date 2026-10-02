@@ -80,7 +80,25 @@ Drive backup uses the narrow `drive.appdata` OAuth scope so Budget Tracker canno
 flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 ```
 
-Use the same `--dart-define` for release builds. Without it the rest of the app works normally, but Settings shows Drive backup as not configured.
+The repository defaults to the Budget Tracker Web OAuth client supplied by the project owner, so regular builds include Google sign-in configuration. Other deployments should use their own `--dart-define` for both debug and release builds. Pass an empty `GOOGLE_SERVER_CLIENT_ID` to disable Drive integration.
+
+The locally distributed update APKs use Android package `com.smartbudget.tracker` and signing-certificate SHA-1 `0C:64:4E:36:5C:36:E0:1F:9C:55:62:A9:6C:8E:7B:3F:1B:FA:C9:4F`. Register that exact pair as an Android OAuth client in the same project as the Web client. CI's temporary debug signing key is different; its unsigned-for-distribution artifacts must be signed with the registered key before Google sign-in can work. In OAuth testing mode, every person connecting must be listed as a test user. The client ID is a public identifier; do not embed or commit a client secret or private signing key.
+
+## Shared Google Sheets budgets
+
+Enable **Google Sheets API** in the same Cloud project as Drive. Shared budgets additionally request `spreadsheets` access to join a Sheet by URL, and `drive.file` access to create and share app-created Sheets. The app reads and writes only the Sheet explicitly selected by the user. While OAuth is in Testing, add each participant's Google email under Google Auth Platform → Audience → Test users. Wider public distribution of the sensitive Sheets scope requires the appropriate Google OAuth publishing/verification process.
+
+1. Install the same update on each phone. Each person uses their own Google account.
+2. Settings → Shared budget → Create shared budget copies the current personal budget into a new visible Google Sheet. The original personal budget is kept in its existing local database/preferences. Shared budgets have separate local databases/preferences.
+3. Invite editor grants the specified Google account editing access and sends Google's invitation email. Copy Sheet link and give it to the invited person. Sharing can also be managed in Google Sheets.
+4. The other person selects Settings → Shared budget → Join shared budget and pastes that link.
+5. Activity, Reports, budgets, categories, goals, recurring rules and imports/exports now use the selected shared budget. Switching to personal budget restores the original personal data. Switching works offline or after access is revoked; unsynced shared edits stay cached on that phone. Restore editing access and rejoin the same Sheet to resume uploading them.
+
+Sync runs after local edits, every 30 seconds while the app is open, and on resume. Offline edits remain in a persisted outbox. Upload retries acknowledge existing change IDs before appending again. Separate entities merge independently. Concurrent versions of the same item are retained and shown under Shared budget → Conflicting edits; select the version to keep. Recurring occurrences retain deterministic IDs so two phones do not count the same occurrence twice. Theme, alerts and backup schedules remain local preferences.
+
+The spreadsheet's **Changes** tab is an append-only revision history, not a flat Excel export. App edits add rows instead of overwriting the entire file. For direct spreadsheet edits, follow its **Read me** tab: modify the human-readable transaction fields on the latest revision, or set Deleted to TRUE. Do not remove history rows or edit Change ID, Item or Replaces. Invalid rows or removed history pause sync with an actionable error; existing local data and pending edits are kept. Direct edits to an old revision can correctly produce a conflict. Use the app's CSV/Excel export for a flat current transaction report.
+
+Private Drive backups still work. Restore is restricted to personal mode so restoring an old snapshot cannot accidentally replace a live shared budget. Clearing data while a shared budget is selected explicitly warns that deletions affect everyone.
 
 Automatic backup defaults to **Daily (recommended)** after the user connects. It only uploads when local data changed and the app is active, so it avoids unnecessary Drive writes. It retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
 
@@ -141,3 +159,7 @@ Currency switching is display-only: changing from EGP to USD/EUR/etc. does not c
 ## Play Store materials
 
 See `PLAY_STORE_RELEASE_CHECKLIST.md`, `PRIVACY_POLICY.md`, `store_assets/STORE_LISTING.md`, and `store_assets/DATA_SAFETY_NOTES.md`.
+
+Shared transaction cards show Added by and Last edited by from the shared change history. Each participant can set Your display name in Shared budget; future revisions include the name and Google email. Earlier revisions keep their recorded author. Direct Sheet edits use the Editor cell, so these labels are attribution rather than a verified audit trail.
+
+When switching with pending shared changes, choose to keep them for later or discard them after confirmation. Discard restores the cached shared workspace to its acknowledged changes and removes its pending outbox without sending deletions to Google. Already synced Sheet data and personal data remain unchanged.

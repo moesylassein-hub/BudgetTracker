@@ -285,6 +285,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 child: TransactionCard(
                   transaction: transaction,
+                    authorship: widget.controller.transactionAuthorship(transaction.id),
                   currencyCode: widget.controller.currencyCode,
                   iconKey: widget.controller.categoryByName(transaction.category)?.iconKey,
                   onTap: () => widget.onEdit(transaction),
@@ -345,6 +346,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               padding: const EdgeInsets.only(bottom: 10),
               child: TransactionCard(
                 transaction: transaction,
+                    authorship: widget.controller.transactionAuthorship(transaction.id),
                 currencyCode: widget.controller.currencyCode,
                 iconKey: widget.controller.categoryByName(transaction.category)?.iconKey,
                 onTap: () => widget.onEdit(transaction),

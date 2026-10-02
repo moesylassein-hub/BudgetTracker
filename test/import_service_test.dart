@@ -9,6 +9,73 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const service = ImportService();
 
+  group('Refund imports', () {
+    test('typed Amount(Auto) preserves Paraga cash-flow convention', () {
+      final table = service.readFile(fileName: 'paraga.csv', bytes: Uint8List.fromList(utf8.encode(
+        'Date,Category,Remark,Amount(Auto),Type\n'
+        '2026-10-01,Travel,Purchase,-80,Expense\n'
+        '2026-10-01,Travel,Refund,80,Expense\n'
+      )));
+      final preview = service.preview(table: table, mapping: service.detectMapping(table), existingTransactions: const []);
+      expect(preview.ready.map((item) => item.amount), [80, -80]);
+      expect(preview.ready.every((item) => item.isExpense), isTrue);
+    });
+    test(
+        'explicit types preserve signs and duplicate detection distinguishes refunds',
+        () {
+      final table = service.readFile(
+        fileName: 'refunds.csv',
+        bytes: Uint8List.fromList(
+          utf8.encode(
+            'Date,Type,Merchant,Category,Amount\n'
+            '2026-10-01,Expense,Travel,Travel,800\n'
+            '2026-10-01,Expense,Travel,Travel,-800\n'
+            '2026-10-01,Expense,Travel,Travel,-800\n'
+            '2026-10-01,Income,Salary,Salary,-800\n'
+            '2026-10-01,Expense,Travel,Travel,0\n'
+            '2026-10-01,Expense,Travel,Travel,NaN\n'
+            '2026-10-01,Expense,Travel,Travel,Infinity\n',
+          ),
+        ),
+      );
+      final mapping = service.detectMapping(table);
+      final first = service.preview(
+        table: table,
+        mapping: mapping,
+        existingTransactions: const [],
+      );
+      expect(first.ready.map((item) => item.amount), [800, -800, -800]);
+      expect(first.invalidCount, 4);
+      final second = service.preview(
+        table: table,
+        mapping: mapping,
+        existingTransactions: [first.ready[1]],
+      );
+      expect(second.duplicateCount, 1);
+      expect(second.ready.map((item) => item.amount), [800, -800]);
+      expect(second.ready.every((item) => item.isExpense), isTrue);
+    });
+
+    test('split expense column preserves refund signs', () {
+      final table = service.readFile(
+        fileName: 'refunds.csv',
+        bytes: Uint8List.fromList(
+          utf8.encode(
+            'Date,Category,Remark,Income,Expense\n'
+            '2026-10-01,Travel,Refund,,-80\n',
+          ),
+        ),
+      );
+      final preview = service.preview(
+        table: table,
+        mapping: service.detectMapping(table),
+        existingTransactions: const [],
+      );
+      expect(preview.ready.single.amount, -80);
+      expect(preview.ready.single.isExpense, isTrue);
+    });
+  });
+
   group('Money Tracker file decoding', () {
     test('reads Paraga-style CSV bytes', () {
       final bytes = Uint8List.fromList(
