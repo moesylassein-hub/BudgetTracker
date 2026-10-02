@@ -138,10 +138,14 @@ class AppController extends ChangeNotifier {
     }
   });
 
-  Future<void> leaveSharedBudget() => _serial(() async {
+  Future<void> leaveSharedBudget({bool discardPending = false}) => _serial(() async {
     final service = _shared;
     if (service == null) return;
     await service.record(_backupSnapshot());
+    if (discardPending) {
+      await service.discardPending();
+      await _applySharedSnapshot();
+    }
     await service.leave();
     _syncTimer?.cancel();
     _shared = null;

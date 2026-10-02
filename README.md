@@ -161,3 +161,5 @@ Currency switching is display-only: changing from EGP to USD/EUR/etc. does not c
 See `PLAY_STORE_RELEASE_CHECKLIST.md`, `PRIVACY_POLICY.md`, `store_assets/STORE_LISTING.md`, and `store_assets/DATA_SAFETY_NOTES.md`.
 
 Shared transaction cards show Added by and Last edited by from the shared change history. Each participant can set Your display name in Shared budget; future revisions include the name and Google email. Earlier revisions keep their recorded author. Direct Sheet edits use the Editor cell, so these labels are attribution rather than a verified audit trail.
+
+When switching with pending shared changes, choose to keep them for later or discard them after confirmation. Discard restores the cached shared workspace to its acknowledged changes and removes its pending outbox without sending deletions to Google. Already synced Sheet data and personal data remain unchanged.

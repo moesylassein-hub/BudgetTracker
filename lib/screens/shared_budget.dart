@@ -285,30 +285,63 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                 onPressed: disabled
                     ? null
                     : () async {
+                        var discard = false;
                         if (app.sharedPendingCount > 0) {
-                          final switchNow = await showDialog<bool>(
+                          final choice = await showDialog<String>(
                             context: context,
                             builder: (context) => AlertDialog(
                               title: const Text('Switch to personal budget?'),
                               content: const Text(
-                                'Your unsynced shared edits will stay saved on this phone. They will not appear in your personal budget. To upload them later, restore access and join the same Sheet again.',
+                                'Keep unsynced edits on this phone to upload later, or discard them. Your personal budget and changes already saved to the shared Sheet stay unchanged.',
                               ),
                               actions: [
                                 TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
+                                  onPressed: () => Navigator.pop(context),
                                   child: const Text('Cancel'),
                                 ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, 'discard'),
+                                  child: const Text('Discard edits'),
+                                ),
                                 FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
+                                  onPressed: () =>
+                                      Navigator.pop(context, 'keep'),
                                   child: const Text('Switch and keep edits'),
                                 ),
                               ],
                             ),
                           );
-                          if (switchNow != true || !mounted) return;
+                          if (choice == null || !mounted) return;
+                          discard = choice == 'discard';
+                          if (discard) {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Discard unsynced edits?'),
+                                content: const Text(
+                                  'This permanently removes this phone?s unsynced additions, edits and deletions from this shared budget. It does not delete anything already saved to the shared Sheet or change your personal budget.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Discard and switch'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true || !mounted) return;
+                          }
                         }
-                        await _run(app.leaveSharedBudget);
+                        await _run(
+                          () => app.leaveSharedBudget(discardPending: discard),
+                        );
                       },
                 child: const Text('Switch to personal budget'),
               ),

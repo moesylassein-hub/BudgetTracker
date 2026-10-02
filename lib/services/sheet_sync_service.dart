@@ -124,6 +124,14 @@ class SheetSyncService {
     }
   }
 
+  Future<void> discardPending() async {
+    final revisions = pending.map((change) => change.revision).toSet();
+    ledger.changes.removeWhere((revision, _) => revisions.contains(revision));
+    pending.clear();
+    pendingApplication = null;
+    await persist();
+  }
+
   Future<void> leave() async {
     // Detach locally even if access was revoked. Keep the outbox for rejoining.
     await persist();

@@ -129,6 +129,72 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
+    'discard drops only pending additions edits and deletions before rejoining',
+    () async {
+      final server = SheetServer();
+      final phone = server.phone('one@example.com');
+      addTearDown(phone.dispose);
+      await phone.record(
+        snapshot([item('travel', 1000), item('existing', 500)]),
+      );
+      await phone.sync();
+      final before = jsonEncode(server.rows);
+      final appends = server.appends;
+      await phone.record(snapshot([item('travel', -800), item('new', 200)]));
+      expect(phone.pending, hasLength(3));
+      await phone.discardPending();
+      await phone.leave();
+      expect(phone.pending, isEmpty);
+      final rejoined = server.phone('one@example.com');
+      addTearDown(rejoined.dispose);
+      await rejoined.join(sheetId, 'one@example.com');
+      expect(rejoined.ledger.entities['transaction:travel']!['amount'], 1000);
+      expect(rejoined.ledger.entities['transaction:existing']!['amount'], 500);
+      expect(rejoined.ledger.entities.containsKey('transaction:new'), isFalse);
+      expect(server.appends, appends);
+      expect(jsonEncode(server.rows), before);
+    },
+  );
+
+  test(
+    'discard and switch works with revoked access and restores the cached workspace',
+    () async {
+      final server = SheetServer();
+      final seed = server.phone('one@example.com');
+      addTearDown(seed.dispose);
+      await seed.record(snapshot([item('travel', 1000)]));
+      await seed.sync();
+      await seed.persist(activate: true);
+      final personal = WorkspaceStorage([item('personal', 500)]);
+      final shared = WorkspaceStorage([
+        item('travel', 1000),
+      ], workspaceId: sheetId);
+      await shared.saveBudgetCycleStartDay(25);
+      final app = await AppController.create(
+        personal,
+        NotificationService(),
+        DriveBackupService(),
+        workspaceStorage: (_) => shared,
+        sharedServiceFactory: () => server.phone('one@example.com'),
+      );
+      addTearDown(app.dispose);
+      app.setAppActive(false);
+      await app.updateTransaction(item('travel', -800));
+      server.denied = true;
+      await app.leaveSharedBudget(discardPending: true);
+      expect(app.sharedBudgetActive, isFalse);
+      expect(app.transactions.single.id, 'personal');
+      expect(shared.items.single.amount, 1000);
+      final cached = server.phone('one@example.com');
+      addTearDown(cached.dispose);
+      await cached.restore(sheet: sheetId);
+      expect(cached.pending, isEmpty);
+      expect(cached.pendingApplication, isNull);
+      expect(cached.ledger.entities['transaction:travel']!['amount'], 1000);
+    },
+  );
+
+  test(
     'revoked access cannot trap the app or discard pending edits on rejoin',
     () async {
       final server = SheetServer();
