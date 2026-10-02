@@ -47,7 +47,12 @@ enum BackupFrequency {
 
 class DriveBackupService {
   static const _scope = 'https://www.googleapis.com/auth/drive.appdata';
-  static const _serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+  // OAuth client IDs are public app identifiers, not client secrets.
+  // Other deployments can supply their own ID, or an empty value to disable it.
+  static const _serverClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '360381329667-0h2jd9c82upiompn2usq2al5mtj82g79.apps.googleusercontent.com',
+  );
   static const _filePrefix = 'budget_tracker_backup_';
   static const _maxBackups = 10;
 

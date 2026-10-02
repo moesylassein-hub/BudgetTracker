@@ -80,7 +80,11 @@ Drive backup uses the narrow `drive.appdata` OAuth scope so Budget Tracker canno
 flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 ```
 
-Use the same `--dart-define` for release builds. Without it the rest of the app works normally, but Settings shows Drive backup as not configured.
+The repository defaults to the Budget Tracker Web OAuth client supplied by the project owner, so regular builds include Google sign-in configuration. Other deployments should use their own `--dart-define` for both debug and release builds. Pass an empty `GOOGLE_SERVER_CLIENT_ID` to disable Drive integration.
+
+The locally distributed update APKs use Android package `com.smartbudget.tracker` and signing-certificate SHA-1 `0C:64:4E:36:5C:36:E0:1F:9C:55:62:A9:6C:8E:7B:3F:1B:FA:C9:4F`. Register that exact pair as an Android OAuth client in the same project as the Web client. CI's temporary debug signing key is different; its unsigned-for-distribution artifacts must be signed with the registered key before Google sign-in can work. In OAuth testing mode, every person connecting must be listed as a test user. The client ID is a public identifier; do not embed or commit a client secret or private signing key.
+
+This integration currently provides private backup and restore. Collaborative budgets require a separate sharing/sync implementation; configuring OAuth alone does not enable them.
 
 Automatic backup defaults to **Daily (recommended)** after the user connects. It only uploads when local data changed and the app is active, so it avoids unnecessary Drive writes. It retains the newest 10 snapshots. Users can choose Off, Daily, Weekly, or Monthly and can manually back up or restore the latest snapshot.
 
