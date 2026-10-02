@@ -12,24 +12,24 @@ import '../models/transaction.dart';
 class LocalStorageService {
   final String workspaceId;
   LocalStorageService({this.workspaceId = ''});
-  String get _prefix => workspaceId.isEmpty ? '' : 'shared_' + workspaceId + '_';
-  String get _databaseName => workspaceId.isEmpty ? 'budget_tracker.db' : _prefix + 'budget_tracker.db';
+  String get _prefix => workspaceId.isEmpty ? '' : 'shared_${workspaceId}_';
+  String get _databaseName => workspaceId.isEmpty ? 'budget_tracker.db' : '${_prefix}budget_tracker.db';
   static const _databaseVersion = 3;
   static const _transactionsTable = 'transactions';
 
-  String get _legacyTransactionsKey => _prefix + 'transactions_v2';
-  String get _budgetKey => _prefix + 'monthly_budget_v2';
-  String get _themeKey => _prefix + 'theme_mode_v1';
-  String get _currencyKey => _prefix + 'currency_code_v1';
-  String get _categoriesKey => _prefix + 'categories_v1';
-  String get _goalsKey => _prefix + 'savings_goals_v1';
-  String get _recurringTransactionsKey => _prefix + 'recurring_transactions_v1';
-  String get _alertsEnabledKey => _prefix + 'budget_alerts_enabled_v1';
-  String get _budgetCycleStartDayKey => _prefix + 'budget_cycle_start_day_v1';
-  String get _backupFrequencyKey => _prefix + 'drive_backup_frequency_v1';
-  String get _lastDriveBackupKey => _prefix + 'last_drive_backup_v1';
-  String get _driveBackupDirtyKey => _prefix + 'drive_backup_dirty_v1';
-  String get _alertStatePrefix => _prefix + 'budget_alert_state_';
+  String get _legacyTransactionsKey => '${_prefix}transactions_v2';
+  String get _budgetKey => '${_prefix}monthly_budget_v2';
+  String get _themeKey => '${_prefix}theme_mode_v1';
+  String get _currencyKey => '${_prefix}currency_code_v1';
+  String get _categoriesKey => '${_prefix}categories_v1';
+  String get _goalsKey => '${_prefix}savings_goals_v1';
+  String get _recurringTransactionsKey => '${_prefix}recurring_transactions_v1';
+  String get _alertsEnabledKey => '${_prefix}budget_alerts_enabled_v1';
+  String get _budgetCycleStartDayKey => '${_prefix}budget_cycle_start_day_v1';
+  String get _backupFrequencyKey => '${_prefix}drive_backup_frequency_v1';
+  String get _lastDriveBackupKey => '${_prefix}last_drive_backup_v1';
+  String get _driveBackupDirtyKey => '${_prefix}drive_backup_dirty_v1';
+  String get _alertStatePrefix => '${_prefix}budget_alert_state_';
 
   Database? _database;
 

@@ -19,10 +19,11 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
     try {
       await action();
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('$error')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -52,8 +53,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
           ),
           FilledButton(
             onPressed: () {
-              if (text.text.trim().isNotEmpty)
+              if (text.text.trim().isNotEmpty) {
                 Navigator.pop(context, text.text.trim());
+              }
             },
             child: const Text('Continue'),
           ),
@@ -112,8 +114,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
         ],
       ),
     );
-    if (choice != null && mounted)
+    if (choice != null && mounted) {
       await _run(() => widget.controller.resolveSharedConflict(entity, choice));
+    }
   }
 
   @override
@@ -151,8 +154,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                           message:
                               'This copies your current transactions, categories, budgets, goals and recurring entries to a new Sheet in your Google Drive. Your personal budget is kept separately.',
                         );
-                        if (name != null && mounted)
+                        if (name != null && mounted) {
                           await _run(() => app.openSharedBudget(name: name));
+                        }
                       },
               ),
               const SizedBox(height: 12),
@@ -168,8 +172,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                           message:
                               'Ask the owner to share the budget Sheet with your Google email as an Editor, then paste its link here.',
                         );
-                        if (link != null && mounted)
+                        if (link != null && mounted) {
                           await _run(() => app.openSharedBudget(link: link));
+                        }
                       },
               ),
             ] else ...[
@@ -214,10 +219,10 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                           message:
                               'Google will email an invitation granting editing access to this budget Sheet.',
                         );
-                        if (email != null && mounted)
+                        if (email != null && mounted) {
                           await _run(() async {
                             await app.inviteSharedEditor(email);
-                            if (mounted)
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
@@ -225,7 +230,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                                   ),
                                 ),
                               );
+                            }
                           });
+                        }
                       },
               ),
               OutlinedButton.icon(
@@ -235,7 +242,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                   await Clipboard.setData(
                     ClipboardData(text: app.sharedSheetUrl!),
                   );
-                  if (context.mounted)
+                  if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
@@ -243,6 +250,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                         ),
                       ),
                     );
+                  }
                 },
               ),
               const SizedBox(height: 12),

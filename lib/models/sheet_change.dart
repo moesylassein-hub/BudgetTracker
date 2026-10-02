@@ -103,8 +103,9 @@ class SheetChange {
     String cell(int index) => index < row.length ? '${row[index]}' : '';
     final id = cell(0);
     final entity = cell(1);
-    if (id.isEmpty || entity.isEmpty)
+    if (id.isEmpty || entity.isEmpty) {
       throw const FormatException('Missing change or item ID.');
+    }
     final parents = (jsonDecode(cell(2)) as List).cast<String>();
     final deleted = cell(14).toLowerCase();
     if (deleted != 'true' && deleted != 'false') {
@@ -145,8 +146,9 @@ class SheetChange {
 
   void validate() {
     final parts = entity.split(':');
-    if (parts.length != 2 || parts.last.isEmpty)
+    if (parts.length != 2 || parts.last.isEmpty) {
       throw const FormatException('Invalid item ID.');
+    }
     if (![
       'transaction',
       'category',
@@ -204,8 +206,9 @@ class SheetChange {
           'budgetCycleStartDay' => v is int && v >= 1 && v <= 31,
           _ => false,
         };
-        if (!valid)
+        if (!valid) {
           throw const FormatException('Invalid shared budget setting.');
+        }
     }
   }
 }

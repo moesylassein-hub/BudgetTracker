@@ -44,8 +44,9 @@ class SheetSyncService {
     if (active == null) return;
     sheetId = parseId(active);
     final raw = prefs.getString(_stateKey);
-    if (raw == null)
+    if (raw == null) {
       throw StateError('Shared budget cache is missing. Rejoin the Sheet.');
+    }
     final data = jsonDecode(raw) as Map;
     title = data['title'] as String?;
     accountEmail = data['accountEmail'] as String?;
@@ -79,19 +80,22 @@ class SheetSyncService {
         'seen': _seenIds.toList(),
       }),
     );
-    if (!saved)
+    if (!saved) {
       throw StateError('Could not save pending shared changes on this phone.');
+    }
     if (activate && !await prefs.setString(_activeKey, sheetId!)) {
       throw StateError('Could not save the shared budget selection.');
     }
   }
 
   Future<void> leave() async {
-    if (pending.isNotEmpty)
+    if (pending.isNotEmpty) {
       throw StateError('Sync pending changes before switching budgets.');
+    }
     final prefs = await SharedPreferences.getInstance();
-    if (!await prefs.remove(_activeKey))
+    if (!await prefs.remove(_activeKey)) {
       throw StateError('Could not switch to personal budget.');
+    }
   }
 
   Future<http.Response> _request(
@@ -114,21 +118,24 @@ class SheetSyncService {
       response,
     ).timeout(const Duration(seconds: 25));
     if (result.statusCode < 200 || result.statusCode >= 300) {
-      if (result.statusCode == 401)
+      if (result.statusCode == 401) {
         throw StateError('Reconnect Google to resume syncing.');
+      }
       if (result.statusCode == 403) {
         throw StateError(
           'Google denied access. Enable the Sheets API, allow this account as a test user, and check Sheet editing access.',
         );
       }
-      if (result.statusCode == 404)
+      if (result.statusCode == 404) {
         throw StateError(
           'Sheet not found or not shared with this Google account.',
         );
-      if (result.statusCode == 429)
+      }
+      if (result.statusCode == 429) {
         throw StateError(
           'Google is busy. Your edits are saved locally; try syncing later.',
         );
+      }
       throw StateError(
         'Google Sheets request failed (${result.statusCode}). Your local changes are retained.',
       );
@@ -340,8 +347,9 @@ class SheetSyncService {
         }
       }
       for (final old in oldPending) {
-        if (rewritten.containsKey(old.revision))
+        if (rewritten.containsKey(old.revision)) {
           ledger.changes.remove(old.revision);
+        }
       }
       ledger.addAll(pending);
       await persist();
