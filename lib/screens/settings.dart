@@ -9,6 +9,7 @@ import '../utils/formatters.dart';
 import 'categories.dart';
 import 'import_transactions.dart';
 import 'recurring_transactions.dart';
+import 'shared_budget.dart';
 
 class SettingsScreen extends StatelessWidget {
   final AppController controller;
@@ -393,6 +394,19 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const _SectionLabel('Google Drive backup'),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.group_rounded),
+                title: const Text('Shared budget'),
+                subtitle: Text(controller.sharedBudgetActive
+                    ? '${controller.sharedBudgetName} · ${controller.sharedPendingCount} pending changes'
+                    : 'Invite people using their own Google accounts'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SharedBudgetScreen(controller: controller),
+                )),
+              ),
+            ),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),

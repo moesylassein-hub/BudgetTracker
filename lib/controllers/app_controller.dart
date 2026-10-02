@@ -8,17 +8,165 @@ import '../models/budget_category.dart';
 import '../models/recurring_transaction.dart';
 import '../models/savings_goal.dart';
 import '../models/transaction.dart';
+import '../models/sheet_change.dart';
 import '../services/drive_backup_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/notification_service.dart';
+import '../services/sheet_sync_service.dart';
 import '../utils/budget_cycle.dart';
 
 class AppController extends ChangeNotifier {
-  final LocalStorageService _storage;
+  LocalStorageService _storage;
+  final LocalStorageService _personalStorage;
   final NotificationService _notifications;
   final DriveBackupService _driveBackup;
 
-  AppController._(this._storage, this._notifications, this._driveBackup);
+  AppController._(LocalStorageService storage, this._notifications, this._driveBackup)
+      : _storage = storage, _personalStorage = storage;
+
+  SheetSyncService? _shared;
+  Timer? _syncTimer;
+  bool _syncBusy = false;
+  bool _disposed = false;
+  bool _syncQueued = false;
+  bool _appActive = true;
+  String? _syncError;
+  Future<void> _operation = Future.value();
+
+  Future<T> _serial<T>(Future<T> Function() action) {
+    final next = _operation.then((_) => action());
+    _operation = next.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
+    return next;
+  }
+
+  bool get sharedBudgetActive => _shared != null;
+  String? get sharedBudgetId => _shared?.sheetId;
+  String get sharedBudgetName => _shared?.title ?? 'Personal budget';
+  String? get sharedSheetUrl => _shared?.url;
+  bool get sharedSyncBusy => _syncBusy;
+  String? get sharedSyncError => _syncError;
+  DateTime? get sharedLastSynced => _shared?.lastSynced;
+  int get sharedPendingCount => _shared?.pending.length ?? 0;
+  Map<String, List<SheetChange>> get sharedConflicts => _shared?.ledger.conflicts ?? {};
+
+  void setAppActive(bool active) {
+    _appActive = active;
+    if (active) _scheduleSync();
+  }
+
+  void _scheduleSync() {
+    if (_shared == null || !_appActive || _disposed || _syncQueued) return;
+    _syncQueued = true;
+    unawaited(syncSharedBudget().whenComplete(() => _syncQueued = false));
+  }
+
+  Future<void> _restoreSharedSelection() async {
+    final service = SheetSyncService(_driveBackup.sharedSheetHeaders);
+    try {
+      await service.restore();
+      if (service.active) {
+        _shared = service;
+        _storage = LocalStorageService(workspaceId: service.sheetId!);
+      } else {
+        service.dispose();
+      }
+    } catch (error) {
+      service.dispose();
+      _syncError = 'Could not open the shared budget: $error';
+    }
+  }
+
+  Future<void> openSharedBudget({String? link, String? name}) => _serial(() async {
+    if (_shared != null) throw StateError('Switch to your personal budget before opening another Sheet.');
+    final service = SheetSyncService(_driveBackup.sharedSheetHeaders);
+    try {
+      await _driveBackup.sharedSheetHeaders(interactive: true);
+      final email = _driveBackup.accountEmail!;
+      if (link != null) {
+        await service.join(link, email);
+      } else {
+        if (name == null || name.trim().isEmpty) throw StateError('Enter a budget name.');
+        await service.create(name, _backupSnapshot(), email);
+      }
+      final storage = LocalStorageService(workspaceId: service.sheetId!);
+      final snapshot = service.ledger.snapshot(_backupSnapshot());
+      await storage.restoreFinancialSnapshot(snapshot);
+      await service.persist(activate: true);
+      _storage = storage;
+      _shared = service;
+      _syncError = null;
+      await _load();
+      notifyListeners();
+      _startSyncTimer();
+    } catch (_) {
+      service.dispose();
+      rethrow;
+    }
+  });
+
+  Future<void> leaveSharedBudget() => _serial(() async {
+    final service = _shared;
+    if (service == null) return;
+    await service.record(_backupSnapshot());
+    await service.leave();
+    _syncTimer?.cancel();
+    _shared = null;
+    service.dispose();
+    _storage = _personalStorage;
+    _syncError = null;
+    await _load();
+    notifyListeners();
+  });
+
+  Future<void> inviteSharedEditor(String email) => _serial(() async {
+    if (_shared == null) throw StateError('Open a shared budget first.');
+    await _shared!.invite(email);
+  });
+
+  Future<void> resolveSharedConflict(String entity, SheetChange choice) => _serial(() async {
+    final service = _shared;
+    if (service == null) return;
+    await service.resolve(entity, choice);
+    await _storage.restoreFinancialSnapshot(service.ledger.snapshot(_backupSnapshot()));
+    await _load();
+    notifyListeners();
+    _scheduleSync();
+  });
+
+  Future<void> syncSharedBudget({bool interactive = false}) => _serial(() async {
+    final service = _shared;
+    if (service == null || _disposed) return;
+    _syncBusy = true;
+    _syncError = null;
+    notifyListeners();
+    try {
+      // Recover local edits even if the app stopped between a DB write and
+      // recording its outbox. Local state is never replaced before journaling.
+      await service.record(_backupSnapshot());
+      await service.sync(interactive: interactive);
+      await _storage.restoreFinancialSnapshot(service.ledger.snapshot(_backupSnapshot()));
+      await _load();
+    } catch (error) {
+      _syncError = 'Sync paused: $error';
+    } finally {
+      _syncBusy = false;
+      if (!_disposed) notifyListeners();
+    }
+  });
+
+  void _startSyncTimer() {
+    _syncTimer?.cancel();
+    if (_shared == null) return;
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _scheduleSync());
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _syncTimer?.cancel();
+    _shared?.dispose();
+    super.dispose();
+  }
 
   final List<Transaction> _transactions = [];
   final List<BudgetCategory> _categories = [];
@@ -40,15 +188,51 @@ class AppController extends ChangeNotifier {
     DriveBackupService driveBackup,
   ) async {
     final controller = AppController._(storage, notifications, driveBackup);
+    await controller._restoreSharedSelection();
     await controller._load();
     return controller;
   }
+
+  Future<void> addTransaction(Transaction transaction) => _serial(() => _addTransaction(transaction));
+  Future<void> updateTransaction(Transaction transaction) => _serial(() => _updateTransaction(transaction));
+  Future<void> deleteTransaction(String id) => _serial(() => _deleteTransaction(id));
+  Future<void> importTransactions(
+    List<Transaction> transactions,
+  ) => _serial(() => _importTransactions(transactions));
+  Future<void> setMonthlyBudget(double value) => _serial(() => _setMonthlyBudget(value));
+  Future<void> setThemeMode(ThemeMode mode) => _serial(() => _setThemeMode(mode));
+  Future<void> setCurrencyCode(String code) => _serial(() => _setCurrencyCode(code));
+  Future<bool> setBudgetAlertsEnabled(bool enabled) => _serial(() => _setBudgetAlertsEnabled(enabled));
+  Future<void> setBudgetCycleStartDay(int value) => _serial(() => _setBudgetCycleStartDay(value));
+  Future<void> addCategory(BudgetCategory category) => _serial(() => _addCategory(category));
+  Future<void> updateCategory(BudgetCategory category) => _serial(() => _updateCategory(category));
+  Future<bool> deleteCategory(String id) => _serial(() => _deleteCategory(id));
+  Future<void> addGoal(SavingsGoal goal) => _serial(() => _addGoal(goal));
+  Future<void> updateGoal(SavingsGoal goal) => _serial(() => _updateGoal(goal));
+  Future<void> deleteGoal(String id) => _serial(() => _deleteGoal(id));
+  Future<void> changeGoalSavings(String id, double delta) => _serial(() => _changeGoalSavings(id, delta));
+  Future<void> addRecurringTransaction(
+    RecurringTransaction recurring,
+  ) => _serial(() => _addRecurringTransaction(recurring));
+  Future<void> updateRecurringTransaction(
+    RecurringTransaction recurring,
+  ) => _serial(() => _updateRecurringTransaction(recurring));
+  Future<void> setRecurringTransactionActive(
+    String id,
+    bool active,
+  ) => _serial(() => _setRecurringTransactionActive(id, active));
+  Future<void> deleteRecurringTransaction(String id) => _serial(() => _deleteRecurringTransaction(id));
+  Future<int> processRecurringTransactions() => _serial(() => _processRecurringTransactions());
+  Future<void> clearAllData() => _serial(() => _clearAllData());
+  Future<bool> restoreLatestDriveBackup() => _serial(() => _restoreLatestDriveBackup());
 
   bool _startupFinished = false;
 
   Future<void> finishStartup() async {
     if (_startupFinished) return;
     _startupFinished = true;
+    _startSyncTimer();
+    _scheduleSync();
 
     // Financial catch-up should not depend on Google Play Services or
     // notification initialization.
@@ -218,7 +402,7 @@ class AppController extends ChangeNotifier {
     _sort();
   }
 
-  Future<void> addTransaction(Transaction transaction) async {
+  Future<void> _addTransaction(Transaction transaction) async {
     await _storage.insertTransaction(transaction);
     _transactions.add(transaction);
     _sort();
@@ -227,7 +411,7 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> updateTransaction(Transaction transaction) async {
+  Future<void> _updateTransaction(Transaction transaction) async {
     final index = _transactions.indexWhere((item) => item.id == transaction.id);
     if (index == -1) return;
 
@@ -239,7 +423,7 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> deleteTransaction(String id) async {
+  Future<void> _deleteTransaction(String id) async {
     final index = _transactions.indexWhere((item) => item.id == id);
     if (index == -1) return;
 
@@ -256,7 +440,7 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> importTransactions(
+  Future<void> _importTransactions(
     List<Transaction> transactions,
   ) async {
     if (transactions.isEmpty) return;
@@ -333,7 +517,7 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> setMonthlyBudget(double value) async {
+  Future<void> _setMonthlyBudget(double value) async {
     if (value <= 0) return;
     await _storage.saveBudget(value);
     _monthlyBudget = value;
@@ -342,21 +526,21 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> setThemeMode(ThemeMode mode) async {
+  Future<void> _setThemeMode(ThemeMode mode) async {
     await _storage.saveThemeMode(mode);
     _themeMode = mode;
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<void> setCurrencyCode(String code) async {
+  Future<void> _setCurrencyCode(String code) async {
     await _storage.saveCurrencyCode(code);
     _currencyCode = code;
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<bool> setBudgetAlertsEnabled(bool enabled) async {
+  Future<bool> _setBudgetAlertsEnabled(bool enabled) async {
     if (enabled) {
       final granted = await _notifications.requestPermission();
       if (!granted) return false;
@@ -369,7 +553,7 @@ class AppController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> setBudgetCycleStartDay(int value) async {
+  Future<void> _setBudgetCycleStartDay(int value) async {
     final next = value.clamp(1, 31).toInt();
     if (next == _budgetCycleStartDay) return;
     await _storage.saveBudgetCycleStartDay(next);
@@ -379,14 +563,14 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> addCategory(BudgetCategory category) async {
+  Future<void> _addCategory(BudgetCategory category) async {
     _categories.add(category);
     await _storage.saveCategories(_categories);
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<void> updateCategory(BudgetCategory category) async {
+  Future<void> _updateCategory(BudgetCategory category) async {
     final index = _categories.indexWhere((item) => item.id == category.id);
     if (index == -1) return;
     final old = _categories[index];
@@ -413,7 +597,7 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<bool> deleteCategory(String id) async {
+  Future<bool> _deleteCategory(String id) async {
     final matches = _categories.where((item) => item.id == id);
     if (matches.isEmpty) return false;
     final category = matches.first;
@@ -429,14 +613,14 @@ class AppController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> addGoal(SavingsGoal goal) async {
+  Future<void> _addGoal(SavingsGoal goal) async {
     _goals.add(goal);
     await _storage.saveGoals(_goals);
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<void> updateGoal(SavingsGoal goal) async {
+  Future<void> _updateGoal(SavingsGoal goal) async {
     final index = _goals.indexWhere((item) => item.id == goal.id);
     if (index == -1) return;
     _goals[index] = goal;
@@ -445,14 +629,14 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> deleteGoal(String id) async {
+  Future<void> _deleteGoal(String id) async {
     _goals.removeWhere((item) => item.id == id);
     await _storage.saveGoals(_goals);
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<void> changeGoalSavings(String id, double delta) async {
+  Future<void> _changeGoalSavings(String id, double delta) async {
     final index = _goals.indexWhere((item) => item.id == id);
     if (index == -1) return;
     final current = _goals[index];
@@ -463,17 +647,17 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> addRecurringTransaction(
+  Future<void> _addRecurringTransaction(
     RecurringTransaction recurring,
   ) async {
     _recurringTransactions.add(recurring);
     await _storage.saveRecurringTransactions(_recurringTransactions);
     notifyListeners();
-    await processRecurringTransactions();
+    await _processRecurringTransactions();
     await _markBackupDirty();
   }
 
-  Future<void> updateRecurringTransaction(
+  Future<void> _updateRecurringTransaction(
     RecurringTransaction recurring,
   ) async {
     final index =
@@ -482,11 +666,11 @@ class AppController extends ChangeNotifier {
     _recurringTransactions[index] = recurring;
     await _storage.saveRecurringTransactions(_recurringTransactions);
     notifyListeners();
-    await processRecurringTransactions();
+    await _processRecurringTransactions();
     await _markBackupDirty();
   }
 
-  Future<void> setRecurringTransactionActive(
+  Future<void> _setRecurringTransactionActive(
     String id,
     bool active,
   ) async {
@@ -502,14 +686,14 @@ class AppController extends ChangeNotifier {
     await _markBackupDirty();
   }
 
-  Future<void> deleteRecurringTransaction(String id) async {
+  Future<void> _deleteRecurringTransaction(String id) async {
     _recurringTransactions.removeWhere((item) => item.id == id);
     await _storage.saveRecurringTransactions(_recurringTransactions);
     notifyListeners();
     await _markBackupDirty();
   }
 
-  Future<int> processRecurringTransactions() async {
+  Future<int> _processRecurringTransactions() async {
     if (_recurringTransactions.isEmpty) return 0;
 
     final today = DateTime.now();
@@ -580,7 +764,7 @@ class AppController extends ChangeNotifier {
     return createdCount;
   }
 
-  Future<void> clearAllData() async {
+  Future<void> _clearAllData() async {
     await _storage.clearFinancialData();
     _transactions.clear();
     _categories
@@ -631,7 +815,8 @@ class AppController extends ChangeNotifier {
     await _performBackup(interactive: true);
   }
 
-  Future<bool> restoreLatestDriveBackup() async {
+  Future<bool> _restoreLatestDriveBackup() async {
+    if (_shared != null) throw StateError('Switch to your personal budget before restoring a backup.');
     _backupInProgress = true;
     _backupError = null;
     notifyListeners();
@@ -674,6 +859,7 @@ class AppController extends ChangeNotifier {
   Future<void> _performBackup({required bool interactive}) async {
     if (_backupInProgress) return;
     _backupInProgress = true;
+    final storage = _storage;
     _backupError = null;
     notifyListeners();
     try {
@@ -682,8 +868,8 @@ class AppController extends ChangeNotifier {
         interactive: interactive,
       );
       _lastDriveBackupAt = uploadedAt.toLocal();
-      await _storage.saveLastDriveBackupAt(uploadedAt);
-      await _storage.saveDriveBackupDirty(false);
+      await storage.saveLastDriveBackupAt(uploadedAt);
+      await storage.saveDriveBackupDirty(false);
     } catch (error) {
       _backupError = error.toString();
       rethrow;
@@ -710,6 +896,10 @@ class AppController extends ChangeNotifier {
       };
 
   Future<void> _markBackupDirty() async {
+    if (_shared != null) {
+      await _shared!.record(_backupSnapshot());
+      _scheduleSync();
+    }
     await _storage.saveDriveBackupDirty(true);
     unawaited(maybeAutoBackup());
   }

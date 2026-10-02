@@ -99,6 +99,31 @@ class DriveBackupService {
     _account = null;
   }
 
+  Future<Map<String, String>> sharedSheetHeaders({bool interactive = false}) async {
+    await initialize();
+    if (!isConfigured) throw StateError('Google sign-in is not configured.');
+    var account = _account;
+    if (account == null) {
+      final lightweight = _signIn.attemptLightweightAuthentication();
+      if (lightweight != null) account = await lightweight;
+    }
+    if (account == null && interactive) account = await _signIn.authenticate();
+    if (account == null) throw StateError('Connect Google to sync this budget.');
+    // Sheets scope allows invited users to open a shared spreadsheet by its URL.
+    // drive.file is sufficient to create and share files created by this app.
+    const scopes = [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive.file',
+    ];
+    final headers = await account.authorizationClient.authorizationHeaders(
+      scopes,
+      promptIfNecessary: interactive,
+    );
+    if (headers == null) throw StateError('Reconnect Google to allow shared budgets.');
+    _account = account;
+    return headers;
+  }
+
   Future<DateTime> uploadSnapshot(
     Map<String, dynamic> snapshot, {
     bool interactive = false,

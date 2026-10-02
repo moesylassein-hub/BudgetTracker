@@ -13,6 +13,7 @@ import 'scan_receipt.dart';
 import 'settings.dart';
 import 'reports.dart';
 import 'transactions.dart';
+import 'shared_budget.dart';
 
 class HomeShell extends StatefulWidget {
   final AppController controller;
@@ -30,7 +31,18 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_refresh);
     unawaited(_setupQuickActions());
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    super.dispose();
   }
 
   Future<void> _setupQuickActions() async {
@@ -171,8 +183,16 @@ class _HomeShellState extends State<HomeShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(titles[_index]),
+        title: Text(widget.controller.sharedBudgetActive ? widget.controller.sharedBudgetName : titles[_index]),
         actions: [
+          if (widget.controller.sharedBudgetActive)
+            IconButton(
+              tooltip: widget.controller.sharedConflicts.isNotEmpty ? 'Resolve sync conflicts' : 'Shared budget sync',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => SharedBudgetScreen(controller: widget.controller))),
+              icon: Icon(widget.controller.sharedSyncError != null || widget.controller.sharedConflicts.isNotEmpty
+                  ? Icons.sync_problem : widget.controller.sharedPendingCount > 0 ? Icons.cloud_upload_outlined : Icons.cloud_done_outlined),
+            ),
           if (_index == 0)
             IconButton.filledTonal(
               tooltip: 'Scan receipt',
@@ -182,7 +202,7 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(width: 12),
         ],
       ),
-      body: IndexedStack(index: _index, children: pages),
+      body: IndexedStack(key: ValueKey(widget.controller.sharedBudgetId), index: _index, children: pages),
       floatingActionButton: _index <= 1
           ? FloatingActionButton.extended(
               onPressed: _showAddMenu,

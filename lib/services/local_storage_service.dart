@@ -10,23 +10,26 @@ import '../models/savings_goal.dart';
 import '../models/transaction.dart';
 
 class LocalStorageService {
-  static const _databaseName = 'budget_tracker.db';
+  final String workspaceId;
+  LocalStorageService({this.workspaceId = ''});
+  String get _prefix => workspaceId.isEmpty ? '' : 'shared_' + workspaceId + '_';
+  String get _databaseName => workspaceId.isEmpty ? 'budget_tracker.db' : _prefix + 'budget_tracker.db';
   static const _databaseVersion = 3;
   static const _transactionsTable = 'transactions';
 
-  static const _legacyTransactionsKey = 'transactions_v2';
-  static const _budgetKey = 'monthly_budget_v2';
-  static const _themeKey = 'theme_mode_v1';
-  static const _currencyKey = 'currency_code_v1';
-  static const _categoriesKey = 'categories_v1';
-  static const _goalsKey = 'savings_goals_v1';
-  static const _recurringTransactionsKey = 'recurring_transactions_v1';
-  static const _alertsEnabledKey = 'budget_alerts_enabled_v1';
-  static const _budgetCycleStartDayKey = 'budget_cycle_start_day_v1';
-  static const _backupFrequencyKey = 'drive_backup_frequency_v1';
-  static const _lastDriveBackupKey = 'last_drive_backup_v1';
-  static const _driveBackupDirtyKey = 'drive_backup_dirty_v1';
-  static const _alertStatePrefix = 'budget_alert_state_';
+  String get _legacyTransactionsKey => _prefix + 'transactions_v2';
+  String get _budgetKey => _prefix + 'monthly_budget_v2';
+  String get _themeKey => _prefix + 'theme_mode_v1';
+  String get _currencyKey => _prefix + 'currency_code_v1';
+  String get _categoriesKey => _prefix + 'categories_v1';
+  String get _goalsKey => _prefix + 'savings_goals_v1';
+  String get _recurringTransactionsKey => _prefix + 'recurring_transactions_v1';
+  String get _alertsEnabledKey => _prefix + 'budget_alerts_enabled_v1';
+  String get _budgetCycleStartDayKey => _prefix + 'budget_cycle_start_day_v1';
+  String get _backupFrequencyKey => _prefix + 'drive_backup_frequency_v1';
+  String get _lastDriveBackupKey => _prefix + 'last_drive_backup_v1';
+  String get _driveBackupDirtyKey => _prefix + 'drive_backup_dirty_v1';
+  String get _alertStatePrefix => _prefix + 'budget_alert_state_';
 
   Database? _database;
 
