@@ -1,7 +1,7 @@
 name: budget_tracker
 description: A private, on-device budget tracker with receipt OCR and spending insights.
 publish_to: "none"
-version: 1.1.1+3
+version: 1.1.2+4
 
 environment:
   sdk: ">=3.12.0 <4.0.0"

@@ -92,7 +92,7 @@ Enable **Google Sheets API** in the same Cloud project as Drive. Shared budgets 
 2. Settings → Shared budget → Create shared budget copies the current personal budget into a new visible Google Sheet. The original personal budget is kept in its existing local database/preferences. Shared budgets have separate local databases/preferences.
 3. Invite editor grants the specified Google account editing access and sends Google's invitation email. Copy Sheet link and give it to the invited person. Sharing can also be managed in Google Sheets.
 4. The other person selects Settings → Shared budget → Join shared budget and pastes that link.
-5. Activity, Reports, budgets, categories, goals, recurring rules and imports/exports now use the selected shared budget. Switching to personal budget restores the original personal data. Sync pending edits before switching.
+5. Activity, Reports, budgets, categories, goals, recurring rules and imports/exports now use the selected shared budget. Switching to personal budget restores the original personal data. Switching works offline or after access is revoked; unsynced shared edits stay cached on that phone. Restore editing access and rejoin the same Sheet to resume uploading them.
 
 Sync runs after local edits, every 30 seconds while the app is open, and on resume. Offline edits remain in a persisted outbox. Upload retries acknowledge existing change IDs before appending again. Separate entities merge independently. Concurrent versions of the same item are retained and shown under Shared budget → Conflicting edits; select the version to keep. Recurring occurrences retain deterministic IDs so two phones do not count the same occurrence twice. Theme, alerts and backup schedules remain local preferences.
 

@@ -68,13 +68,14 @@ class SheetSyncService {
     return id;
   }
 
-  Future<void> restore() async {
+  Future<void> restore({String? sheet}) async {
     final prefs = await SharedPreferences.getInstance();
-    final active = prefs.getString(_activeKey);
+    final active = sheet ?? prefs.getString(_activeKey);
     if (active == null) return;
     sheetId = parseId(active);
     final raw = prefs.getString(_stateKey);
     if (raw == null) {
+      if (sheet != null) return;
       throw StateError('Shared budget cache is missing. Rejoin the Sheet.');
     }
     final data = jsonDecode(raw) as Map;
@@ -124,9 +125,8 @@ class SheetSyncService {
   }
 
   Future<void> leave() async {
-    if (pending.isNotEmpty) {
-      throw StateError('Sync pending changes before switching budgets.');
-    }
+    // Detach locally even if access was revoked. Keep the outbox for rejoining.
+    await persist();
     final prefs = await SharedPreferences.getInstance();
     if (!await prefs.remove(_activeKey)) {
       throw StateError('Could not switch to personal budget.');
@@ -266,6 +266,7 @@ class SheetSyncService {
 
   Future<void> join(String input, String email) async {
     sheetId = parseId(input);
+    await restore(sheet: sheetId);
     await setAccount(email);
     await sync(interactive: true);
     final metadata = await _request(

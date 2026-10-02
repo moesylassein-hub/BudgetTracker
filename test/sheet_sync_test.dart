@@ -50,11 +50,13 @@ SheetChange change(
 class SheetServer {
   final List<List<dynamic>> rows = [List.of(SheetChange.columns)];
   bool offline = false;
+  bool denied = false;
   bool loseAppendResponse = false;
   Map<String, dynamic>? permission;
   int appends = 0;
   http.Client client() => MockClient((request) async {
     if (offline) throw const SocketException('offline');
+    if (denied) return http.Response('{}', 403);
     expect(request.headers['authorization'], 'Bearer test');
     if (request.url.path.endsWith('/permissions')) {
       permission = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
@@ -125,6 +127,71 @@ class WorkspaceStorage extends LocalStorageService {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'revoked access cannot trap the app or discard pending edits on rejoin',
+    () async {
+      final server = SheetServer();
+      final seed = server.phone('one@example.com');
+      addTearDown(seed.dispose);
+      await seed.record(snapshot([item('travel', 1000)]));
+      await seed.sync();
+      await seed.persist(activate: true);
+      final personal = WorkspaceStorage([item('personal', 500)]);
+      final shared = WorkspaceStorage([
+        item('travel', 1000),
+      ], workspaceId: sheetId);
+      await shared.saveBudgetCycleStartDay(25);
+      final app = await AppController.create(
+        personal,
+        NotificationService(),
+        DriveBackupService(),
+        workspaceStorage: (_) => shared,
+        sharedServiceFactory: () => server.phone('one@example.com'),
+      );
+      addTearDown(app.dispose);
+      app.setAppActive(false);
+      await app.updateTransaction(item('travel', -800));
+      expect(app.sharedPendingCount, greaterThan(0));
+      server.denied = true;
+      await app.syncSharedBudget();
+      expect(app.sharedSyncError, contains('Google denied access'));
+      await app.leaveSharedBudget();
+      expect(app.sharedBudgetActive, isFalse);
+      expect(app.transactions.single.id, 'personal');
+      expect(app.currentMonthSpent, 500);
+      expect(shared.items.single.amount, -800);
+      final restarted = await AppController.create(
+        personal,
+        NotificationService(),
+        DriveBackupService(),
+        workspaceStorage: (_) => shared,
+        sharedServiceFactory: () => server.phone('one@example.com'),
+      );
+      addTearDown(restarted.dispose);
+      expect(restarted.sharedBudgetActive, isFalse);
+      expect(restarted.transactions.single.id, 'personal');
+      final rejoined = server.phone('one@example.com');
+      addTearDown(rejoined.dispose);
+      await expectLater(
+        rejoined.join(sheetId, 'one@example.com'),
+        throwsStateError,
+      );
+      expect(rejoined.pending, isNotEmpty);
+      server.denied = false;
+      final retry = server.phone('one@example.com');
+      addTearDown(retry.dispose);
+      await retry.join(sheetId, 'one@example.com');
+      expect(retry.ledger.entities['transaction:travel']!['amount'], -800);
+      expect(retry.pending, isEmpty);
+      expect(
+        server.rows.where(
+          (row) => row.length > 1 && row[1] == 'transaction:travel',
+        ),
+        hasLength(2),
+      );
+    },
+  );
 
   test(
     'author names sync, retain the creator and survive restart per account',
@@ -294,7 +361,14 @@ void main() {
       await phone.record(snapshot([item('refund', -800)]));
       await phone.persist(activate: true);
       await expectLater(phone.sync(), throwsA(isA<SocketException>()));
-      await expectLater(phone.leave(), throwsStateError);
+      await phone.leave();
+      final detached = SheetSyncService(
+        ({bool interactive = false}) async => {},
+        client: server.client(),
+      );
+      addTearDown(detached.dispose);
+      await detached.restore();
+      expect(detached.active, isFalse);
       final personal = LocalStorageService();
       final shared = LocalStorageService(workspaceId: sheetId);
       await personal.saveBudget(2000);

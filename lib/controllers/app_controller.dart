@@ -124,6 +124,7 @@ class AppController extends ChangeNotifier {
       final storage = _workspaceStorage(service.sheetId!);
       final snapshot = service.ledger.snapshot(_backupSnapshot());
       await storage.restoreFinancialSnapshot(snapshot);
+      await service.finishApplication();
       await service.persist(activate: true);
       _storage = storage;
       _shared = service;

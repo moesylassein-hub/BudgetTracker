@@ -282,7 +282,34 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
               ),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: disabled ? null : () => _run(app.leaveSharedBudget),
+                onPressed: disabled
+                    ? null
+                    : () async {
+                        if (app.sharedPendingCount > 0) {
+                          final switchNow = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Switch to personal budget?'),
+                              content: const Text(
+                                'Your unsynced shared edits will stay saved on this phone. They will not appear in your personal budget. To upload them later, restore access and join the same Sheet again.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Switch and keep edits'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (switchNow != true || !mounted) return;
+                        }
+                        await _run(app.leaveSharedBudget);
+                      },
                 child: const Text('Switch to personal budget'),
               ),
               for (final entry in app.sharedConflicts.entries)
