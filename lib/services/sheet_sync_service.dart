@@ -50,6 +50,19 @@ class SheetSyncService {
   final ledger = SheetLedger();
   final List<SheetChange> pending = [];
   final Set<String> _seenIds = {};
+  String? _transactionsViewHash;
+  static const _transactionsViewColumns = [
+    'ID',
+    'Date',
+    'Type',
+    'Merchant',
+    'Category',
+    'Amount',
+    'Note',
+    'Ledger',
+    'Account',
+    'Currency',
+  ];
   static const _activeKey = 'shared_sheet_active_v1';
   String get _stateKey => 'shared_sheet_state_v1_$sheetId';
   bool get active => sheetId != null;
@@ -217,7 +230,14 @@ class SheetSyncService {
             },
           },
           {
-            'properties': {'sheetId': 1, 'title': 'Read me'},
+            'properties': {
+              'sheetId': 1,
+              'title': 'Transactions',
+              'gridProperties': {'frozenRowCount': 1},
+            },
+          },
+          {
+            'properties': {'sheetId': 2, 'title': 'Read me'},
           },
         ],
       },
@@ -238,17 +258,24 @@ class SheetSyncService {
             'values': [SheetChange.columns],
           },
           {
-            'range': "'Read me'!A1:A7",
+            'range': 'Transactions!A1:J1',
+            'values': [_transactionsViewColumns],
+          },
+          {
+            'range': "'Read me'!A1:A8",
             'values': [
-              ['Budget Tracker shared budget — format 1'],
+              ['Budget Tracker shared budget — format 2'],
               [
                 'Share this spreadsheet with other Google accounts as Editors, then paste its link in Budget Tracker.',
               ],
               [
-                'Changes keeps the revision history. Edit budgets normally in the app.',
+                'Transactions is the current shared-budget view and is refreshed automatically by the app.',
               ],
               [
-                'For direct Sheet edits, edit Date, Type, Merchant, Category, Amount, Note, Ledger, Account or Currency on the latest transaction revision.',
+                'Changes keeps the append-only revision history used for syncing, offline edits and conflicts.',
+              ],
+              [
+                'For direct Sheet edits, edit Date, Type, Merchant, Category, Amount, Note, Ledger, Account or Currency on the latest transaction revision in Changes.',
               ],
               [
                 'Use TRUE in Deleted to delete a transaction. Do not remove history rows or change IDs, Item or Replaces.',
@@ -391,6 +418,136 @@ class SheetSyncService {
     );
   }
 
+  Future<Set<String>> _sheetTitles({bool interactive = false}) async {
+    final response = await _request(
+      'GET',
+      'sheets.googleapis.com',
+      '/v4/spreadsheets/$sheetId',
+      interactive: interactive,
+      query: {'fields': 'sheets.properties.title'},
+    );
+    final decoded = jsonDecode(response.body) as Map;
+    return ((decoded['sheets'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((sheet) => sheet['properties'])
+        .whereType<Map>()
+        .map((properties) => properties['title']?.toString() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toSet();
+  }
+
+  Future<void> _ensureTransactionsSheet({
+    bool interactive = false,
+  }) async {
+    final titles = await _sheetTitles(interactive: interactive);
+    if (titles.contains('Transactions')) return;
+
+    try {
+      await _request(
+        'POST',
+        'sheets.googleapis.com',
+        '/v4/spreadsheets/$sheetId:batchUpdate',
+        interactive: interactive,
+        body: {
+          'requests': [
+            {
+              'addSheet': {
+                'properties': {
+                  'title': 'Transactions',
+                  'gridProperties': {'frozenRowCount': 1},
+                },
+              },
+            },
+          ],
+        },
+      );
+    } catch (_) {
+      // Another editor can create the mirror tab between our metadata read and
+      // addSheet request. Treat that race as success when the tab now exists.
+      final refreshed = await _sheetTitles(interactive: interactive);
+      if (!refreshed.contains('Transactions')) rethrow;
+    }
+  }
+
+  List<List<Object>> _transactionsViewRows() {
+    final values = ledger.entities.entries
+        .where((entry) => entry.key.startsWith('transaction:'))
+        .map((entry) {
+          final value = entry.value;
+          return <String, dynamic>{
+            'id': value['id']?.toString() ??
+                entry.key.substring('transaction:'.length),
+            'date': value['date']?.toString() ?? '',
+            'type': value['type']?.toString() ?? '',
+            'store': value['store']?.toString() ?? '',
+            'category': value['category']?.toString() ?? '',
+            'amount': value['amount'],
+            'note': value['note']?.toString() ?? '',
+            'ledger': value['ledger']?.toString() ?? '',
+            'account': value['account']?.toString() ?? '',
+            'currencyCode': value['currencyCode']?.toString() ?? '',
+          };
+        })
+        .toList()
+      ..sort((a, b) {
+        final byDate = (b['date'] as String).compareTo(a['date'] as String);
+        if (byDate != 0) return byDate;
+        return (a['id'] as String).compareTo(b['id'] as String);
+      });
+
+    return [
+      List<Object>.from(_transactionsViewColumns),
+      for (final value in values)
+        [
+          value['id'] as String,
+          value['date'] as String,
+          value['type'] as String,
+          value['store'] as String,
+          value['category'] as String,
+          value['amount'] ?? '',
+          value['note'] as String,
+          value['ledger'] as String,
+          value['account'] as String,
+          value['currencyCode'] as String,
+        ],
+    ];
+  }
+
+  Future<void> _publishTransactionsView({
+    bool interactive = false,
+  }) async {
+    final rows = _transactionsViewRows();
+    final nextHash = canonicalJson(rows);
+    if (_transactionsViewHash == nextHash) return;
+
+    await _ensureTransactionsSheet(interactive: interactive);
+    await _request(
+      'POST',
+      'sheets.googleapis.com',
+      '/v4/spreadsheets/$sheetId/values:batchClear',
+      interactive: interactive,
+      body: {
+        'ranges': ['Transactions!A:J'],
+      },
+    );
+    await _request(
+      'POST',
+      'sheets.googleapis.com',
+      '/v4/spreadsheets/$sheetId/values:batchUpdate',
+      interactive: interactive,
+      body: {
+        'valueInputOption': 'RAW',
+        'data': [
+          {
+            'range': 'Transactions!A1:J${rows.length}',
+            'values': rows,
+          },
+        ],
+      },
+    );
+    _transactionsViewHash = nextHash;
+  }
+
   Future<void> sync({
     bool interactive = false,
     Map<String, dynamic>? localSnapshot,
@@ -448,6 +605,10 @@ class SheetSyncService {
       _merge(await _read());
       await checkpoint();
     }
+    // Changes remains the authoritative append-only history. Transactions is
+    // a readable current-state mirror so additions are immediately visible in
+    // Google Sheets without decoding revision rows.
+    await _publishTransactionsView(interactive: interactive);
     lastSynced = DateTime.now();
     await persist();
   }
