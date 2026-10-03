@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:budget_tracker/models/sheet_change.dart';
+import 'package:budget_tracker/models/budget_access.dart';
 import 'package:budget_tracker/controllers/app_controller.dart';
 import 'package:budget_tracker/models/transaction.dart';
 import 'package:budget_tracker/services/local_storage_service.dart';
@@ -57,14 +58,32 @@ class SheetServer {
   bool loseAppendResponse = false;
   Map<String, dynamic>? permission;
   int appends = 0;
+  int mirrorWrites = 0;
+  int gridRows = 1000;
+  bool failMirror = false;
+  bool hidePermissions = false;
+  final List<String?> permissionPages = [];
+  final List<Map<String, dynamic>> sharing = [
+    {
+      'type': 'user',
+      'role': 'owner',
+      'displayName': 'Owner',
+      'emailAddress': 'one@example.com',
+    },
+    {
+      'type': 'user',
+      'role': 'writer',
+      'displayName': 'Editor',
+      'emailAddress': 'two@example.com',
+    },
+  ];
 
   http.Client client() => MockClient((request) async {
     if (offline) throw const SocketException('offline');
     if (denied) return http.Response('{}', 403);
     expect(request.headers['authorization'], 'Bearer test');
 
-    if (request.method == 'POST' &&
-        request.url.path == '/v4/spreadsheets') {
+    if (request.method == 'POST' && request.url.path == '/v4/spreadsheets') {
       final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
       final sheets = body['sheets'] as List? ?? const [];
       for (final raw in sheets.whereType<Map>()) {
@@ -73,12 +92,35 @@ class SheetServer {
           sheetTitles.add(properties['title'].toString());
         }
       }
+      return http.Response(jsonEncode({'spreadsheetId': sheetId}), 200);
+    }
+
+    if (request.method == 'GET' && request.url.path.endsWith('/permissions')) {
+      if (hidePermissions) return http.Response('{}', 403);
+      final token = request.url.queryParameters['pageToken'];
+      permissionPages.add(token);
       return http.Response(
-        jsonEncode({'spreadsheetId': sheetId}),
+        jsonEncode({
+          'permissions': token == null
+              ? sharing.take(1).toList()
+              : sharing.skip(1).toList(),
+          if (token == null && sharing.length > 1) 'nextPageToken': 'next',
+        }),
         200,
       );
     }
-
+    if (request.method == 'GET' && request.url.host == 'www.googleapis.com') {
+      return http.Response(
+        jsonEncode({
+          'name': 'Family',
+          'owners': [
+            {'displayName': 'Owner', 'emailAddress': 'one@example.com'},
+          ],
+          'capabilities': {'canEdit': true, 'canShare': true},
+        }),
+        200,
+      );
+    }
     if (request.url.path.endsWith('/permissions')) {
       permission = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
       return http.Response('{}', 200);
@@ -127,10 +169,36 @@ class SheetServer {
       return http.Response('{}', 200);
     }
 
-    if (request.method == 'POST' &&
-        request.url.path.endsWith(':batchUpdate')) {
+    if (request.method == 'POST' && request.url.path.endsWith(':batchUpdate')) {
       final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
-      for (final raw in (body['requests'] as List? ?? const []).whereType<Map>()) {
+      final operations = (body['requests'] as List? ?? const [])
+          .whereType<Map>()
+          .toList();
+      if (failMirror && operations.any((raw) => raw['updateCells'] != null))
+        return http.Response('{}', 500);
+      for (final raw in operations) {
+        final append = raw['appendDimension'];
+        if (append is Map && append['dimension'] == 'ROWS')
+          gridRows += append['length'] as int;
+        final update = raw['updateCells'];
+        if (update is Map) {
+          expect(update['fields'], 'userEnteredValue');
+          expect((update['range'] as Map)['endColumnIndex'], 10);
+          final updated = (update['rows'] as List)
+              .map(
+                (raw) => ((raw as Map)['values'] as List).map((cell) {
+                  final value = (cell as Map)['userEnteredValue'] as Map;
+                  expect(value.containsKey('formulaValue'), isFalse);
+                  return value['numberValue'] ?? value['stringValue'];
+                }).toList(),
+              )
+              .toList();
+          expect(updated.length, lessThanOrEqualTo(gridRows));
+          transactionRows
+            ..clear()
+            ..addAll(updated);
+          mirrorWrites++;
+        }
         final addSheet = raw['addSheet'];
         if (addSheet is Map) {
           final properties = addSheet['properties'];
@@ -169,7 +237,11 @@ class SheetServer {
         'sheets': [
           for (final title in sheetTitles)
             {
-              'properties': {'title': title},
+              'properties': {
+                'title': title,
+                'sheetId': sheetTitles.toList().indexOf(title),
+                'gridProperties': {'rowCount': gridRows, 'columnCount': 26},
+              },
             },
         ],
       }),
@@ -221,6 +293,131 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('budget access uses Google ownership, paginates editors and persists details', () async {
+    final server = SheetServer();
+    final phone = server.phone('two@example.com');
+    addTearDown(phone.dispose);
+    await phone.refreshAccess();
+    expect(phone.access!.roleFor('ONE@example.com'), 'Owner');
+    expect(phone.access!.roleFor('two@example.com'), 'Invited editor');
+    expect(phone.access!.members.map((member) => member.email), [
+      'one@example.com',
+      'two@example.com',
+    ]);
+    expect(server.permissionPages, [null, 'next']);
+    expect(phone.accessError, isNull);
+    expect(phone.access!.complete, isTrue);
+    final restored = server.phone('two@example.com');
+    addTearDown(restored.dispose);
+    await restored.restore(sheet: sheetId);
+    expect(restored.access!.roleFor('two@example.com'), 'Invited editor');
+  });
+
+  test('restricted sharing details and revoked access are explicit without blocking local data', () async {
+    final server = SheetServer()..hidePermissions = true;
+    final phone = server.phone('two@example.com');
+    addTearDown(phone.dispose);
+    await phone.refreshAccess();
+    expect(phone.access!.complete, isFalse);
+    expect(phone.access!.members.single.role, 'owner');
+    expect(phone.access!.roleFor(phone.accountEmail), 'Editor');
+    expect(phone.accessError, contains('full access list'));
+    server.denied = true;
+    await phone.refreshAccess();
+    expect(phone.accessError, contains('last check'));
+    await phone.leave();
+  });
+
+  test('group, domain and public access are labelled without inventing named members', () {
+    expect(
+      BudgetMember({
+        'type': 'group',
+        'emailAddress': 'team@example.com',
+        'role': 'writer',
+      }).label,
+      'team@example.com',
+    );
+    expect(
+      BudgetMember({
+        'type': 'domain',
+        'domain': 'example.com',
+        'role': 'reader',
+      }).label,
+      'People at example.com',
+    );
+    expect(
+      BudgetMember({'type': 'anyone', 'role': 'reader'}).label,
+      'Anyone with the link',
+    );
+    final access = BudgetAccess(
+      members: [],
+      checkedAt: DateTime.now(),
+      complete: true,
+      canEdit: false,
+    );
+    expect(access.roleFor('someone@example.com'), 'Viewer');
+    expect(access.roleFor(null), 'Unknown');
+  });
+
+  test('invalid cross-item history cannot advance the incremental cursor or alter cached state', () async {
+    final server = SheetServer();
+    final phone = server.phone('one@example.com');
+    addTearDown(phone.dispose);
+    await phone.record(snapshot([item('travel', 1000)]));
+    await phone.sync();
+    final original = phone.ledger.heads['transaction:travel']!.last;
+    server.rows.add(
+      SheetChange(
+        id: 'bad',
+        entity: 'transaction:bad',
+        parents: [original.revision],
+        author: 'two@example.com',
+        value: item('bad', 50).toJson(),
+      ).toRow(),
+    );
+    await expectLater(phone.sync(), throwsFormatException);
+    expect(phone.ledger.entities['transaction:travel']!['amount'], 1000);
+    expect(phone.ledger.entities.containsKey('transaction:bad'), isFalse);
+    server.rows.removeLast();
+    server.rows.add(
+      SheetChange(
+        id: 'fixed',
+        entity: original.entity,
+        parents: [original.revision],
+        author: 'two@example.com',
+        value: item('travel', 900).toJson(),
+      ).toRow(),
+    );
+    await phone.sync();
+    expect(phone.ledger.entities['transaction:travel']!['amount'], 900);
+  });
+
+  test('atomic mirror failure retains the previous view and retries with literal strings', () async {
+    final server = SheetServer()..gridRows = 2;
+    final phone = server.phone('one@example.com');
+    addTearDown(phone.dispose);
+    await phone.record(snapshot([item('travel', 1000)]));
+    await phone.sync();
+    final previous = jsonEncode(server.transactionRows);
+    final formulaName = item('new', -800).copyWith(store: '=SUM(1,2)');
+    await phone.record(snapshot([item('travel', 1000), formulaName]));
+    server.failMirror = true;
+    await expectLater(phone.sync(), throwsStateError);
+    expect(jsonEncode(server.transactionRows), previous);
+    server.failMirror = false;
+    await phone.sync();
+    expect(server.transactionRows, hasLength(3));
+    expect(
+      server.transactionRows.skip(1).any((row) => row[3] == '=SUM(1,2)'),
+      isTrue,
+    );
+    expect(server.gridRows, 3);
+    // Repair an externally overwritten mirror even when our ledger did not change.
+    server.transactionRows.clear();
+    await phone.sync(interactive: true);
+    expect(server.transactionRows, hasLength(3));
+  });
+
   test(
     'discard drops only pending additions edits and deletions before rejoining',
     () async {
@@ -249,43 +446,40 @@ void main() {
     },
   );
 
-  test(
-    'discard and switch works with revoked access and restores the cached workspace',
-    () async {
-      final server = SheetServer();
-      final seed = server.phone('one@example.com');
-      addTearDown(seed.dispose);
-      await seed.record(snapshot([item('travel', 1000)]));
-      await seed.sync();
-      await seed.persist(activate: true);
-      final personal = WorkspaceStorage([item('personal', 500)]);
-      final shared = WorkspaceStorage([
-        item('travel', 1000),
-      ], workspaceId: sheetId);
-      await shared.saveBudgetCycleStartDay(25);
-      final app = await AppController.create(
-        personal,
-        NotificationService(),
-        DriveBackupService(),
-        workspaceStorage: (_) => shared,
-        sharedServiceFactory: () => server.phone('one@example.com'),
-      );
-      addTearDown(app.dispose);
-      app.setAppActive(false);
-      await app.updateTransaction(item('travel', -800));
-      server.denied = true;
-      await app.leaveSharedBudget(discardPending: true);
-      expect(app.sharedBudgetActive, isFalse);
-      expect(app.transactions.single.id, 'personal');
-      expect(shared.items.single.amount, 1000);
-      final cached = server.phone('one@example.com');
-      addTearDown(cached.dispose);
-      await cached.restore(sheet: sheetId);
-      expect(cached.pending, isEmpty);
-      expect(cached.pendingApplication, isNull);
-      expect(cached.ledger.entities['transaction:travel']!['amount'], 1000);
-    },
-  );
+  test('discard and switch works with revoked access and restores the cached workspace', () async {
+    final server = SheetServer();
+    final seed = server.phone('one@example.com');
+    addTearDown(seed.dispose);
+    await seed.record(snapshot([item('travel', 1000)]));
+    await seed.sync();
+    await seed.persist(activate: true);
+    final personal = WorkspaceStorage([item('personal', 500)]);
+    final shared = WorkspaceStorage([
+      item('travel', 1000),
+    ], workspaceId: sheetId);
+    await shared.saveBudgetCycleStartDay(25);
+    final app = await AppController.create(
+      personal,
+      NotificationService(),
+      DriveBackupService(),
+      workspaceStorage: (_) => shared,
+      sharedServiceFactory: () => server.phone('one@example.com'),
+    );
+    addTearDown(app.dispose);
+    app.setAppActive(false);
+    await app.updateTransaction(item('travel', -800));
+    server.denied = true;
+    await app.leaveSharedBudget(discardPending: true);
+    expect(app.sharedBudgetActive, isFalse);
+    expect(app.transactions.single.id, 'personal');
+    expect(shared.items.single.amount, 1000);
+    final cached = server.phone('one@example.com');
+    addTearDown(cached.dispose);
+    await cached.restore(sheet: sheetId);
+    expect(cached.pending, isEmpty);
+    expect(cached.pendingApplication, isNull);
+    expect(cached.ledger.entities['transaction:travel']!['amount'], 1000);
+  });
 
   test(
     'revoked access cannot trap the app or discard pending edits on rejoin',
@@ -395,69 +589,63 @@ void main() {
     },
   );
 
-  test(
-    'conflict resolution retains creator attribution and missing history is unknown',
-    () {
-      final original = change('original', item('travel', 1000));
-      final edit = SheetChange(
-        id: 'edit',
-        entity: original.entity,
-        parents: [original.revision],
-        author: 'Ahmed <two@example.com>',
-        value: item('travel', 900).toJson(),
-      );
-      final other = SheetChange(
-        id: 'other',
-        entity: original.entity,
-        parents: [original.revision],
-        author: 'Mohamed <one@example.com>',
-        value: item('travel', -800).toJson(),
-      );
-      final resolved = SheetChange(
-        id: 'resolved',
-        entity: original.entity,
-        parents: [edit.revision, other.revision],
-        author: 'Resolver <three@example.com>',
-        value: other.value,
-      );
-      final ledger = SheetLedger()..addAll([original, edit, other, resolved]);
-      expect(
-        ledger.authorship(original.entity),
-        'Added by one@example.com\nLast edited by Resolver',
-      );
-      expect(ledger.authorship('transaction:missing'), isNull);
-      final incomplete = SheetLedger()..addAll([edit]);
-      expect(
-        incomplete.authorship(original.entity),
-        'Added by Unknown\nLast edited by Ahmed',
-      );
-    },
-  );
+  test('conflict resolution retains creator attribution and missing history is unknown', () {
+    final original = change('original', item('travel', 1000));
+    final edit = SheetChange(
+      id: 'edit',
+      entity: original.entity,
+      parents: [original.revision],
+      author: 'Ahmed <two@example.com>',
+      value: item('travel', 900).toJson(),
+    );
+    final other = SheetChange(
+      id: 'other',
+      entity: original.entity,
+      parents: [original.revision],
+      author: 'Mohamed <one@example.com>',
+      value: item('travel', -800).toJson(),
+    );
+    final resolved = SheetChange(
+      id: 'resolved',
+      entity: original.entity,
+      parents: [edit.revision, other.revision],
+      author: 'Resolver <three@example.com>',
+      value: other.value,
+    );
+    final ledger = SheetLedger()..addAll([original, edit, other, resolved]);
+    expect(
+      ledger.authorship(original.entity),
+      'Added by one@example.com\nLast edited by Resolver',
+    );
+    expect(ledger.authorship('transaction:missing'), isNull);
+    final incomplete = SheetLedger()..addAll([edit]);
+    expect(
+      incomplete.authorship(original.entity),
+      'Added by Unknown\nLast edited by Ahmed',
+    );
+  });
 
-  test(
-    'different Google accounts sync additions, signed refunds, edits and deletions',
-    () async {
-      final server = SheetServer();
-      final one = server.phone('one@example.com');
-      final two = server.phone('two@example.com');
-      addTearDown(one.dispose);
-      addTearDown(two.dispose);
-      await one.record(snapshot([item('travel', 1000), item('refund', -800)]));
-      await one.sync();
-      await two.sync();
-      expect(two.ledger.entities['transaction:refund']!['amount'], -800);
-      expect(two.ledger.snapshot({})['budgetCycleStartDay'], 25);
-      await two.record(snapshot([item('travel', 900), item('refund', -800)]));
-      await two.sync();
-      await one.sync();
-      expect(one.ledger.entities['transaction:travel']!['amount'], 900);
-      await one.record(snapshot([item('refund', -800)]));
-      await one.sync();
-      await two.sync();
-      expect(two.ledger.entities.containsKey('transaction:travel'), isFalse);
-      expect(two.ledger.conflicts, isEmpty);
-    },
-  );
+  test('different Google accounts sync additions, signed refunds, edits and deletions', () async {
+    final server = SheetServer();
+    final one = server.phone('one@example.com');
+    final two = server.phone('two@example.com');
+    addTearDown(one.dispose);
+    addTearDown(two.dispose);
+    await one.record(snapshot([item('travel', 1000), item('refund', -800)]));
+    await one.sync();
+    await two.sync();
+    expect(two.ledger.entities['transaction:refund']!['amount'], -800);
+    expect(two.ledger.snapshot({})['budgetCycleStartDay'], 25);
+    await two.record(snapshot([item('travel', 900), item('refund', -800)]));
+    await two.sync();
+    await one.sync();
+    expect(one.ledger.entities['transaction:travel']!['amount'], 900);
+    await one.record(snapshot([item('refund', -800)]));
+    await one.sync();
+    await two.sync();
+    expect(two.ledger.entities.containsKey('transaction:travel'), isFalse);
+    expect(two.ledger.conflicts, isEmpty);
+  });
 
   test(
     'simultaneous offline edits preserve both branches and explicit resolution',
@@ -561,10 +749,7 @@ void main() {
       expect(phone.ledger.entities['transaction:travel']!['amount'], -800);
       expect(phone.ledger.conflicts, isEmpty);
       row[8] = 'invalid';
-      await expectLater(
-        phone.sync(interactive: true),
-        throwsFormatException,
-      );
+      await expectLater(phone.sync(interactive: true), throwsFormatException);
       expect(phone.ledger.entities['transaction:travel']!['amount'], -800);
     },
   );
@@ -578,10 +763,7 @@ void main() {
       await phone.record(snapshot([item('travel', 1000)]));
       await phone.sync();
       server.rows.removeAt(1);
-      await expectLater(
-        phone.sync(interactive: true),
-        throwsFormatException,
-      );
+      await expectLater(phone.sync(interactive: true), throwsFormatException);
       expect(phone.ledger.entities['transaction:travel']!['amount'], 1000);
     },
   );
@@ -692,11 +874,7 @@ void main() {
       expect(server.changeReadRanges, ['Changes!A402:O']);
 
       server.rows.add(
-        change(
-          'late',
-          item('late', -75),
-          entity: 'transaction:late',
-        ).toRow(),
+        change('late', item('late', -75), entity: 'transaction:late').toRow(),
       );
       await phone.sync();
       expect(server.changeReadRanges.last, 'Changes!A402:O');
@@ -707,53 +885,45 @@ void main() {
     },
   );
 
-  test(
-    'no-op shared polls do not rewrite the whole workspace',
-    () async {
-      final server = SheetServer();
-      final seed = server.phone('one@example.com');
-      addTearDown(seed.dispose);
-      await seed.record(snapshot([item('travel', 1000)]));
-      await seed.sync();
-      await seed.persist(activate: true);
+  test('no-op shared polls do not rewrite the whole workspace', () async {
+    final server = SheetServer();
+    final seed = server.phone('one@example.com');
+    addTearDown(seed.dispose);
+    await seed.record(snapshot([item('travel', 1000)]));
+    await seed.sync();
+    await seed.persist(activate: true);
 
-      final personal = WorkspaceStorage([item('personal', 500)]);
-      final shared = WorkspaceStorage([
-        item('travel', 1000),
-      ], workspaceId: sheetId);
-      await shared.saveBudgetCycleStartDay(25);
+    final personal = WorkspaceStorage([item('personal', 500)]);
+    final shared = WorkspaceStorage([
+      item('travel', 1000),
+    ], workspaceId: sheetId);
+    await shared.saveBudgetCycleStartDay(25);
 
-      final app = await AppController.create(
-        personal,
-        NotificationService(),
-        DriveBackupService(),
-        workspaceStorage: (_) => shared,
-        sharedServiceFactory: () => server.phone('one@example.com'),
-      );
-      addTearDown(app.dispose);
-      app.setAppActive(false);
+    final app = await AppController.create(
+      personal,
+      NotificationService(),
+      DriveBackupService(),
+      workspaceStorage: (_) => shared,
+      sharedServiceFactory: () => server.phone('one@example.com'),
+    );
+    addTearDown(app.dispose);
+    app.setAppActive(false);
 
-      expect(shared.restoreCount, 0);
-      await app.syncSharedBudget();
-      await app.syncSharedBudget();
-      expect(shared.restoreCount, 0);
+    expect(shared.restoreCount, 0);
+    await app.syncSharedBudget();
+    await app.syncSharedBudget();
+    expect(shared.restoreCount, 0);
 
-      final other = server.phone('two@example.com');
-      addTearDown(other.dispose);
-      await other.sync();
-      await other.record(
-        snapshot([item('travel', 900), item('refund', -100)]),
-      );
-      await other.sync();
+    final other = server.phone('two@example.com');
+    addTearDown(other.dispose);
+    await other.sync();
+    await other.record(snapshot([item('travel', 900), item('refund', -100)]));
+    await other.sync();
 
-      await app.syncSharedBudget();
-      expect(shared.restoreCount, 1);
-      expect(
-        app.transactions.firstWhere((tx) => tx.id == 'refund').amount,
-        -100,
-      );
-    },
-  );
+    await app.syncSharedBudget();
+    expect(shared.restoreCount, 1);
+    expect(app.transactions.firstWhere((tx) => tx.id == 'refund').amount, -100);
+  });
 
   test(
     'active shared budget automatically uploads a newly added transaction',
@@ -807,62 +977,56 @@ void main() {
     },
   );
 
-  test(
-    'app applies shared data, preserves stale editor changes and returns to personal data',
-    () async {
-      final server = SheetServer();
-      final seed = server.phone('one@example.com');
-      addTearDown(seed.dispose);
-      await seed.record(snapshot([item('travel', 1000)]));
-      await seed.sync();
-      await seed.persist(activate: true);
-      final personal = WorkspaceStorage([item('personal', 500)]);
-      final shared = WorkspaceStorage([
-        item('travel', 1000),
-      ], workspaceId: sheetId);
-      await shared.saveBudgetCycleStartDay(25);
-      final app = await AppController.create(
-        personal,
-        NotificationService(),
-        DriveBackupService(),
-        workspaceStorage: (_) => shared,
-        sharedServiceFactory: () => server.phone('one@example.com'),
-      );
-      addTearDown(app.dispose);
-      app.setAppActive(false);
-      expect(app.sharedBudgetActive, isTrue);
-      expect(app.transactions.single.id, 'travel');
-      final editorRevision = app.sharedRevision('transaction:travel')!;
-      final other = server.phone('two@example.com');
-      addTearDown(other.dispose);
-      await other.sync();
-      await other.recordVersion(
-        'transaction:travel',
-        item('travel', 900).toJson(),
-        editorRevision,
-      );
-      await other.sync();
-      await app.syncSharedBudget();
-      expect(app.sharedSyncError, isNull);
-      expect(app.transactions.single.amount, 900);
-      // The editor was opened at 1000; it must not silently overwrite 900.
-      await app.updateTransaction(
-        item('travel', -800),
-        revision: editorRevision,
-      );
-      expect(app.sharedConflicts['transaction:travel']!.length, 2);
-      final refund = app.sharedConflicts['transaction:travel']!.firstWhere(
-        (v) => v.value!['amount'] == -800,
-      );
-      await app.resolveSharedConflict('transaction:travel', refund);
-      await app.syncSharedBudget();
-      expect(app.currentMonthSpent, -800);
-      expect(app.currentMonthIncome, 0);
-      expect(app.sharedPendingCount, 0);
-      await app.leaveSharedBudget();
-      expect(app.sharedBudgetActive, isFalse);
-      expect(app.transactions.single.id, 'personal');
-      expect(personal.items.single.amount, 500);
-    },
-  );
+  test('app applies shared data, preserves stale editor changes and returns to personal data', () async {
+    final server = SheetServer();
+    final seed = server.phone('one@example.com');
+    addTearDown(seed.dispose);
+    await seed.record(snapshot([item('travel', 1000)]));
+    await seed.sync();
+    await seed.persist(activate: true);
+    final personal = WorkspaceStorage([item('personal', 500)]);
+    final shared = WorkspaceStorage([
+      item('travel', 1000),
+    ], workspaceId: sheetId);
+    await shared.saveBudgetCycleStartDay(25);
+    final app = await AppController.create(
+      personal,
+      NotificationService(),
+      DriveBackupService(),
+      workspaceStorage: (_) => shared,
+      sharedServiceFactory: () => server.phone('one@example.com'),
+    );
+    addTearDown(app.dispose);
+    app.setAppActive(false);
+    expect(app.sharedBudgetActive, isTrue);
+    expect(app.transactions.single.id, 'travel');
+    final editorRevision = app.sharedRevision('transaction:travel')!;
+    final other = server.phone('two@example.com');
+    addTearDown(other.dispose);
+    await other.sync();
+    await other.recordVersion(
+      'transaction:travel',
+      item('travel', 900).toJson(),
+      editorRevision,
+    );
+    await other.sync();
+    await app.syncSharedBudget();
+    expect(app.sharedSyncError, isNull);
+    expect(app.transactions.single.amount, 900);
+    // The editor was opened at 1000; it must not silently overwrite 900.
+    await app.updateTransaction(item('travel', -800), revision: editorRevision);
+    expect(app.sharedConflicts['transaction:travel']!.length, 2);
+    final refund = app.sharedConflicts['transaction:travel']!.firstWhere(
+      (v) => v.value!['amount'] == -800,
+    );
+    await app.resolveSharedConflict('transaction:travel', refund);
+    await app.syncSharedBudget();
+    expect(app.currentMonthSpent, -800);
+    expect(app.currentMonthIncome, 0);
+    expect(app.sharedPendingCount, 0);
+    await app.leaveSharedBudget();
+    expect(app.sharedBudgetActive, isFalse);
+    expect(app.transactions.single.id, 'personal');
+    expect(personal.items.single.amount, 500);
+  });
 }

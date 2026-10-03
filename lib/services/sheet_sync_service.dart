@@ -4,8 +4,16 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/sheet_change.dart';
+import '../models/budget_access.dart';
 
 typedef SheetHeaders = Future<Map<String, String>> Function({bool interactive});
+
+class _HistoryBatch {
+  final List<SheetChange> changes;
+  final int rowCount;
+  final DateTime? fullReadAt;
+  _HistoryBatch(this.changes, this.rowCount, this.fullReadAt);
+}
 
 class SheetSyncService {
   final SheetHeaders headers;
@@ -46,6 +54,8 @@ class SheetSyncService {
   }
 
   DateTime? lastSynced;
+  BudgetAccess? access;
+  String? accessError;
   Map<String, dynamic>? pendingApplication;
   final ledger = SheetLedger();
   final List<SheetChange> pending = [];
@@ -53,6 +63,7 @@ class SheetSyncService {
   int _remoteRowCount = 0;
   DateTime? _lastFullReadAt;
   String? _transactionsViewHash;
+  bool _mirrorNeedsRefresh = true;
   static const _fullHistoryRefreshInterval = Duration(minutes: 10);
   static const _transactionsViewColumns = [
     'ID',
@@ -75,9 +86,9 @@ class SheetSyncService {
   static String parseId(String input) {
     final uri = Uri.tryParse(input.trim());
     final id = uri != null && uri.host == 'docs.google.com'
-        ? RegExp(
-            r'^/spreadsheets/d/([a-zA-Z0-9_-]+)',
-          ).firstMatch(uri.path)?.group(1)
+        ? RegExp(r'^/spreadsheets/d/([a-zA-Z0-9_-]+)')
+              .firstMatch(uri.path)
+              ?.group(1)
         : input.trim();
     if (id == null || !RegExp(r'^[a-zA-Z0-9_-]{20,}$').hasMatch(id)) {
       throw const FormatException('Paste a Google Sheets sharing link.');
@@ -97,12 +108,15 @@ class SheetSyncService {
     }
     final data = jsonDecode(raw) as Map;
     title = data['title'] as String?;
+    if (data['access'] != null) {
+      access = BudgetAccess.fromJson(
+        Map<String, dynamic>.from(data['access'] as Map),
+      );
+    }
     final email = data['accountEmail'] as String?;
     if (email != null) await setAccount(email);
     lastSynced = DateTime.tryParse(
-      prefs.getString(_lastSyncedKey) ??
-          data['lastSynced'] as String? ??
-          '',
+      prefs.getString(_lastSyncedKey) ?? data['lastSynced'] as String? ?? '',
     );
     pendingApplication = data['application'] == null
         ? null
@@ -127,6 +141,7 @@ class SheetSyncService {
       _stateKey,
       jsonEncode({
         'title': title,
+        'access': access?.toJson(),
         'accountEmail': accountEmail,
         'lastSynced': lastSynced?.toIso8601String(),
         'changes': ledger.changes.values
@@ -151,10 +166,7 @@ class SheetSyncService {
   Future<void> _persistLastSynced() async {
     if (!active || lastSynced == null) return;
     final prefs = await SharedPreferences.getInstance();
-    if (!await prefs.setString(
-      _lastSyncedKey,
-      lastSynced!.toIso8601String(),
-    )) {
+    if (!await prefs.setString(_lastSyncedKey, lastSynced!.toIso8601String())) {
       throw StateError('Could not save shared sync time on this phone.');
     }
   }
@@ -202,9 +214,8 @@ class SheetSyncService {
             ..body = body == null ? '' : jsonEncode(body),
         )
         .timeout(const Duration(seconds: 25));
-    final result = await http.Response.fromStream(
-      response,
-    ).timeout(const Duration(seconds: 25));
+    final result = await http.Response.fromStream(response)
+        .timeout(const Duration(seconds: 25));
     if (result.statusCode < 200 || result.statusCode >= 300) {
       if (result.statusCode == 401) {
         throw StateError('Reconnect Google to resume syncing.');
@@ -306,7 +317,7 @@ class SheetSyncService {
                 'Date uses ISO format (for example 2026-10-02T12:00:00). Type is expense or income. Negative expenses are refunds.',
               ],
               [
-                'Sync checks for conflicts. Resolve differing versions in Settings → Shared budget.',
+                'Sync checks for conflicts. Resolve differing versions in Settings → Budget details.',
               ],
             ],
           },
@@ -379,7 +390,7 @@ class SheetSyncService {
     await persist();
   }
 
-  Future<List<SheetChange>> _read({bool interactive = false}) async {
+  Future<_HistoryBatch> _read({bool interactive = false}) async {
     final now = DateTime.now();
     final fullRead =
         interactive ||
@@ -387,9 +398,7 @@ class SheetSyncService {
         _lastFullReadAt == null ||
         now.difference(_lastFullReadAt!) >= _fullHistoryRefreshInterval;
     final firstRow = fullRead ? 1 : _remoteRowCount + 1;
-    final range = fullRead
-        ? 'Changes!A:O'
-        : 'Changes!A$firstRow:O';
+    final range = fullRead ? 'Changes!A:O' : 'Changes!A$firstRow:O';
     final response = await _request(
       'GET',
       'sheets.googleapis.com',
@@ -410,7 +419,7 @@ class SheetSyncService {
         );
       }
     } else if (rows.isEmpty) {
-      return const [];
+      return _HistoryBatch(const [], _remoteRowCount, null);
     }
 
     final changes = <String, SheetChange>{};
@@ -444,18 +453,26 @@ class SheetSyncService {
           'Shared history rows were removed. Restore them using Sheets version history; use Deleted to remove transactions.',
         );
       }
-      _remoteRowCount = rows.length;
-      _lastFullReadAt = now;
-    } else {
-      _remoteRowCount += rows.length;
     }
-    return changes.values.toList();
+    return _HistoryBatch(
+      changes.values.toList(),
+      fullRead ? rows.length : _remoteRowCount + rows.length,
+      fullRead ? now : null,
+    );
   }
 
-  ({bool headsChanged, bool cacheChanged}) _merge(
-    List<SheetChange> remote,
-  ) {
+  ({bool headsChanged, bool cacheChanged}) _merge(_HistoryBatch batch) {
+    final remote = batch.changes;
+    void commitCursor() {
+      _remoteRowCount = batch.rowCount;
+      if (batch.fullReadAt != null) {
+        _lastFullReadAt = batch.fullReadAt;
+        _mirrorNeedsRefresh = true;
+      }
+    }
+
     if (remote.isEmpty) {
+      commitCursor();
       return (headsChanged: false, cacheChanged: false);
     }
 
@@ -468,19 +485,24 @@ class SheetSyncService {
     var cacheChanged = headsChanged;
     final byId = {for (final change in remote) change.id: change};
     final pendingRevisions = pending.map((change) => change.revision).toSet();
-    final beforeChanges = ledger.changes.length;
-    ledger.changes.removeWhere(
+    final candidate = SheetLedger()..changes.addAll(ledger.changes);
+    final beforeChanges = candidate.changes.length;
+    candidate.changes.removeWhere(
       (revision, change) =>
           byId.containsKey(change.id) &&
           byId[change.id]!.revision != revision &&
           !pendingRevisions.contains(revision),
     );
-    if (ledger.changes.length != beforeChanges) {
+    if (candidate.changes.length != beforeChanges) {
       cacheChanged = true;
       headsChanged = true;
     }
 
-    ledger.addAll(remote);
+    candidate.addAll(remote);
+    ledger.changes
+      ..clear()
+      ..addAll(candidate.changes);
+    commitCursor();
     for (final id in byId.keys) {
       if (_seenIds.add(id)) cacheChanged = true;
     }
@@ -492,30 +514,33 @@ class SheetSyncService {
     return (headsChanged: headsChanged, cacheChanged: cacheChanged);
   }
 
-  Future<Set<String>> _sheetTitles({bool interactive = false}) async {
+  Future<Map<String, dynamic>?> _transactionsSheet({
+    bool interactive = false,
+  }) async {
     final response = await _request(
       'GET',
       'sheets.googleapis.com',
       '/v4/spreadsheets/$sheetId',
       interactive: interactive,
-      query: {'fields': 'sheets.properties.title'},
+      query: {
+        'fields': 'sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))',
+      },
     );
     final decoded = jsonDecode(response.body) as Map;
-    return ((decoded['sheets'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((sheet) => sheet['properties'])
-        .whereType<Map>()
-        .map((properties) => properties['title']?.toString() ?? '')
-        .where((value) => value.isNotEmpty)
-        .toSet();
+    for (final raw in decoded['sheets'] as List? ?? []) {
+      final properties = Map<String, dynamic>.from(
+        (raw as Map)['properties'] as Map,
+      );
+      if (properties['title'] == 'Transactions') return properties;
+    }
+    return null;
   }
 
-  Future<void> _ensureTransactionsSheet({
+  Future<Map<String, dynamic>> _ensureTransactionsSheet({
     bool interactive = false,
   }) async {
-    final titles = await _sheetTitles(interactive: interactive);
-    if (titles.contains('Transactions')) return;
-
+    final existing = await _transactionsSheet(interactive: interactive);
+    if (existing != null) return existing;
     try {
       await _request(
         'POST',
@@ -536,38 +561,44 @@ class SheetSyncService {
         },
       );
     } catch (_) {
-      // Another editor can create the mirror tab between our metadata read and
-      // addSheet request. Treat that race as success when the tab now exists.
-      final refreshed = await _sheetTitles(interactive: interactive);
-      if (!refreshed.contains('Transactions')) rethrow;
+      final created = await _transactionsSheet(interactive: interactive);
+      if (created != null) return created;
+      rethrow;
     }
+    final created = await _transactionsSheet(interactive: interactive);
+    if (created == null) {
+      throw StateError('Could not create the Transactions view.');
+    }
+    return created;
   }
 
   List<List<Object>> _transactionsViewRows() {
-    final values = ledger.entities.entries
-        .where((entry) => entry.key.startsWith('transaction:'))
-        .map((entry) {
-          final value = entry.value;
-          return <String, dynamic>{
-            'id': value['id']?.toString() ??
-                entry.key.substring('transaction:'.length),
-            'date': value['date']?.toString() ?? '',
-            'type': value['type']?.toString() ?? '',
-            'store': value['store']?.toString() ?? '',
-            'category': value['category']?.toString() ?? '',
-            'amount': value['amount'],
-            'note': value['note']?.toString() ?? '',
-            'ledger': value['ledger']?.toString() ?? '',
-            'account': value['account']?.toString() ?? '',
-            'currencyCode': value['currencyCode']?.toString() ?? '',
-          };
-        })
-        .toList()
-      ..sort((a, b) {
-        final byDate = (b['date'] as String).compareTo(a['date'] as String);
-        if (byDate != 0) return byDate;
-        return (a['id'] as String).compareTo(b['id'] as String);
-      });
+    final values =
+        ledger.entities.entries
+            .where((entry) => entry.key.startsWith('transaction:'))
+            .map((entry) {
+              final value = entry.value;
+              return <String, dynamic>{
+                'id':
+                    value['id']?.toString() ??
+                    entry.key.substring('transaction:'.length),
+                'date': value['date']?.toString() ?? '',
+                'type': value['type']?.toString() ?? '',
+                'store': value['store']?.toString() ?? '',
+                'category': value['category']?.toString() ?? '',
+                'amount': value['amount'],
+                'note': value['note']?.toString() ?? '',
+                'ledger': value['ledger']?.toString() ?? '',
+                'account': value['account']?.toString() ?? '',
+                'currencyCode': value['currencyCode']?.toString() ?? '',
+              };
+            })
+            .toList()
+          ..sort((a, b) {
+            final byDate = (b['date'] as String).compareTo(a['date'] as String);
+            if (byDate != 0) return byDate;
+            return (a['id'] as String).compareTo(b['id'] as String);
+          });
 
     return [
       List<Object>.from(_transactionsViewColumns),
@@ -587,38 +618,72 @@ class SheetSyncService {
     ];
   }
 
-  Future<void> _publishTransactionsView({
-    bool interactive = false,
-  }) async {
+  Future<void> _publishTransactionsView({bool interactive = false}) async {
     final rows = _transactionsViewRows();
     final nextHash = canonicalJson(rows);
-    if (_transactionsViewHash == nextHash) return;
-
-    await _ensureTransactionsSheet(interactive: interactive);
-    await _request(
-      'POST',
-      'sheets.googleapis.com',
-      '/v4/spreadsheets/$sheetId/values:batchClear',
-      interactive: interactive,
-      body: {
-        'ranges': ['Transactions!A:J'],
-      },
-    );
-    await _request(
-      'POST',
-      'sheets.googleapis.com',
-      '/v4/spreadsheets/$sheetId/values:batchUpdate',
-      interactive: interactive,
-      body: {
-        'valueInputOption': 'RAW',
-        'data': [
-          {
-            'range': 'Transactions!A1:J${rows.length}',
-            'values': rows,
-          },
+    if (!interactive &&
+        !_mirrorNeedsRefresh &&
+        _transactionsViewHash == nextHash) {
+      return;
+    }
+    final properties = await _ensureTransactionsSheet(interactive: interactive);
+    final tabId = properties['sheetId'] as int;
+    final grid = properties['gridProperties'] as Map;
+    final requests = <Map<String, dynamic>>[];
+    final rowCount = grid['rowCount'] as int;
+    final columnCount = grid['columnCount'] as int;
+    if (rows.length > rowCount) {
+      requests.add({
+        'appendDimension': {
+          'sheetId': tabId,
+          'dimension': 'ROWS',
+          'length': rows.length - rowCount,
+        },
+      });
+    }
+    if (columnCount < 10) {
+      requests.add({
+        'appendDimension': {
+          'sheetId': tabId,
+          'dimension': 'COLUMNS',
+          'length': 10 - columnCount,
+        },
+      });
+    }
+    // One atomic request replaces the view and clears leftover cells. Use
+    // typed string values so spreadsheet-looking merchant names are never formulas.
+    requests.add({
+      'updateCells': {
+        'range': {
+          'sheetId': tabId,
+          'startRowIndex': 0,
+          'startColumnIndex': 0,
+          'endColumnIndex': 10,
+        },
+        'fields': 'userEnteredValue',
+        'rows': [
+          for (final row in rows)
+            {
+              'values': [
+                for (final value in row)
+                  {
+                    'userEnteredValue': value is num
+                        ? {'numberValue': value}
+                        : {'stringValue': '$value'},
+                  },
+              ],
+            },
         ],
       },
+    });
+    await _request(
+      'POST',
+      'sheets.googleapis.com',
+      '/v4/spreadsheets/$sheetId:batchUpdate',
+      interactive: interactive,
+      body: {'requests': requests},
     );
+    _mirrorNeedsRefresh = false;
     _transactionsViewHash = nextHash;
   }
 
@@ -649,7 +714,7 @@ class SheetSyncService {
 
     if (pending.isNotEmpty) {
       // Never reuse a remotely edited row ID after an uncertain upload.
-      final remoteIds = remote.map((change) => change.id).toSet();
+      final remoteIds = remote.changes.map((change) => change.id).toSet();
       final rewritten = <String, String>{};
       final oldPending = List<SheetChange>.of(pending);
       for (var i = 0; i < pending.length; i++) {
@@ -676,7 +741,10 @@ class SheetSyncService {
         }
       }
       ledger.addAll(pending);
-      if (rewritten.isNotEmpty) cacheChanged = true;
+      if (rewritten.isNotEmpty) {
+        cacheChanged = true;
+        needsApplication = true;
+      }
       await checkpoint();
 
       final upload = List<SheetChange>.of(pending);
@@ -703,6 +771,94 @@ class SheetSyncService {
     await _publishTransactionsView(interactive: interactive);
     lastSynced = DateTime.now();
     await _persistLastSynced();
+  }
+
+  Future<void> refreshAccess() async {
+    accessError = null;
+    try {
+      final metadata = await _request(
+        'GET',
+        'www.googleapis.com',
+        '/drive/v3/files/$sheetId',
+        query: {
+          'fields': 'name,owners(displayName,emailAddress),capabilities(canEdit,canShare)',
+        },
+      );
+      final file = jsonDecode(metadata.body) as Map;
+      final owners = (file['owners'] as List? ?? [])
+          .map(
+            (raw) => BudgetMember({
+              ...Map<String, dynamic>.from(raw as Map),
+              'role': 'owner',
+              'type': 'user',
+            }),
+          )
+          .toList();
+      final capabilities = file['capabilities'] as Map? ?? {};
+      final members = <BudgetMember>[];
+      var complete = false;
+      try {
+        String? token;
+        final seenTokens = <String>{};
+        do {
+          final response = await _request(
+            'GET',
+            'www.googleapis.com',
+            '/drive/v3/files/$sheetId/permissions',
+            query: {
+              'pageSize': '100',
+              'fields': 'nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,allowFileDiscovery,deleted,expirationTime)',
+              if (token != null) 'pageToken': token,
+            },
+          );
+          final page = jsonDecode(response.body) as Map;
+          for (final raw in page['permissions'] as List? ?? []) {
+            final permission = Map<String, dynamic>.from(raw as Map);
+            final expires = DateTime.tryParse(
+              permission['expirationTime'] as String? ?? '',
+            );
+            if (permission['deleted'] != true &&
+                (expires == null || expires.isAfter(DateTime.now()))) {
+              members.add(BudgetMember(permission));
+            }
+          }
+          token = page['nextPageToken'] as String?;
+          if (token != null && !seenTokens.add(token)) {
+            throw StateError('Repeated sharing page.');
+          }
+        } while (token != null);
+        complete = true;
+      } catch (_) {
+        members.clear();
+        accessError = 'Google did not provide the full access list. Only confirmed ownership is shown.';
+      }
+      for (final owner in owners) {
+        if (!members.any(
+          (member) =>
+              member.type == 'user' &&
+              member.email.toLowerCase() == owner.email.toLowerCase(),
+        )) {
+          members.add(owner);
+        }
+      }
+      members.sort((a, b) {
+        if ((a.role == 'owner') != (b.role == 'owner')) {
+          return a.role == 'owner' ? -1 : 1;
+        }
+        return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+      });
+      access = BudgetAccess(
+        members: members,
+        canEdit: capabilities['canEdit'] as bool?,
+        canShare: capabilities['canShare'] as bool?,
+        complete: complete,
+        checkedAt: DateTime.now(),
+      );
+      if (file['name'] is String) title = file['name'] as String;
+      await persist();
+    } catch (_) {
+      accessError = 'Could not refresh access. You may be offline, access may have been removed, or Google may limit sharing details. Any displayed access is from the last check.';
+    }
   }
 
   Future<void> invite(String email) async {

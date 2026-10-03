@@ -61,3 +61,5 @@ Before publishing this policy, replace this section with a real support email ad
 **Support email:** `REPLACE_WITH_YOUR_SUPPORT_EMAIL`
 
 Shared budgets also store an optional display name alongside the editor email in new change-history entries. These names are visible to other editors and remain in previous revisions when the name changes.
+
+Budget details reads and caches the selected Sheet owners and access grants that Google permits the signed-in account to view, including names, emails, group/domain/link access and roles. The app does not expand group membership or read sharing information for unrelated Drive files.

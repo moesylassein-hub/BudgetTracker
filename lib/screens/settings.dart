@@ -402,10 +402,10 @@ class SettingsScreen extends StatelessWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.group_rounded),
-                title: const Text('Shared budget'),
+                title: const Text('Budget details'),
                 subtitle: Text(controller.sharedBudgetActive
                     ? '${controller.sharedBudgetName} · ${controller.sharedPendingCount} pending changes'
-                    : 'Invite people using their own Google accounts'),
+                    : 'Personal budget on this phone ? Owner'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SharedBudgetScreen(controller: controller),

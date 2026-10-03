@@ -9,6 +9,7 @@ import '../models/recurring_transaction.dart';
 import '../models/savings_goal.dart';
 import '../models/transaction.dart';
 import '../models/sheet_change.dart';
+import '../models/budget_access.dart';
 import '../services/drive_backup_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/notification_service.dart';
@@ -47,7 +48,7 @@ class AppController extends ChangeNotifier {
 
   bool get sharedBudgetActive => _shared != null;
   String? get sharedBudgetId => _shared?.sheetId;
-  String get sharedBudgetName => _shared?.title ?? 'Personal budget';
+  String get sharedBudgetName => _shared?.title ?? 'Personal budget on this phone';
   String? get sharedSheetUrl => _shared?.url;
   bool get sharedSyncBusy => _syncBusy;
   String? get sharedSyncError => _syncError;
@@ -61,6 +62,24 @@ class AppController extends ChangeNotifier {
     await _shared!.setDisplayName(name);
     notifyListeners();
   });
+  SheetSyncService? _accessService;
+  bool get sharedAccessBusy => _shared != null && identical(_shared, _accessService);
+  BudgetAccess? get sharedAccess => _shared?.access;
+  String? get sharedAccessError => _shared?.accessError;
+  String? get sharedAccountEmail => _shared?.accountEmail;
+  String get sharedRole => _shared?.access?.roleFor(_shared?.accountEmail) ?? 'Unknown';
+  Future<void> refreshSharedAccess() async {
+    final service = _shared;
+    if (service == null || sharedAccessBusy || _disposed) return;
+    _accessService = service;
+    notifyListeners();
+    try {
+      await service.refreshAccess();
+    } finally {
+      if (identical(_accessService, service)) _accessService = null;
+      if (!_disposed && identical(_shared, service)) notifyListeners();
+    }
+  }
   String? sharedRevision(String entity) => _shared?.ledger.heads[entity]?.last.revision;
 
   Future<void> _applySharedSnapshot() async {
@@ -132,6 +151,7 @@ class AppController extends ChangeNotifier {
       await _load();
       notifyListeners();
       _startSyncTimer();
+      unawaited(refreshSharedAccess());
     } catch (_) {
       service.dispose();
       rethrow;
@@ -159,6 +179,7 @@ class AppController extends ChangeNotifier {
   Future<void> inviteSharedEditor(String email) => _serial(() async {
     if (_shared == null) throw StateError('Open a shared budget first.');
     await _shared!.invite(email);
+    await refreshSharedAccess();
   });
 
   Future<void> resolveSharedConflict(String entity, SheetChange choice) => _serial(() async {

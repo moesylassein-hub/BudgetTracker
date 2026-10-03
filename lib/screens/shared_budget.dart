@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +15,14 @@ class SharedBudgetScreen extends StatefulWidget {
 }
 
 class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.controller.refreshSharedAccess());
+    });
+  }
+
   bool _busy = false;
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -20,9 +30,8 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -126,10 +135,12 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
       final app = widget.controller;
       final disabled = _busy || app.sharedSyncBusy;
       return Scaffold(
-        appBar: AppBar(title: const Text('Shared budget')),
+        appBar: AppBar(title: const Text('Budget details')),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            const Text('Current budget'),
+            const SizedBox(height: 4),
             Text(
               app.sharedBudgetName,
               style: Theme.of(context).textTheme.headlineSmall,
@@ -139,7 +150,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
             const SizedBox(height: 12),
             if (!app.sharedBudgetActive) ...[
               const Text(
-                'Share a budget through Google Sheets. Each person signs in with their own Google account. Your personal budget stays on this phone.',
+                'Your role: Owner on this phone.\nOnly you can access this local budget through the app on this phone. Google Drive backup is separate from sharing.\n\nSwitch to a synced budget by creating a Google Sheet or joining one shared with your Google account.',
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
@@ -151,8 +162,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                         final name = await _ask(
                           'Create shared budget',
                           'Budget name',
-                          message:
-                              'This copies your current transactions, categories, budgets, goals and recurring entries to a new Sheet in your Google Drive. Your personal budget is kept separately.',
+                          message: 'This copies your current transactions, categories, budgets, goals and recurring entries to a new Sheet in your Google Drive. Your personal budget is kept separately.',
                         );
                         if (name != null && mounted) {
                           await _run(() => app.openSharedBudget(name: name));
@@ -169,8 +179,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                         final link = await _ask(
                           'Join shared budget',
                           'Google Sheets link',
-                          message:
-                              'Ask the owner to share the budget Sheet with your Google email as an Editor, then paste its link here.',
+                          message: 'Ask the owner to share the budget Sheet with your Google email as an Editor, then paste its link here.',
                         );
                         if (link != null && mounted) {
                           await _run(() => app.openSharedBudget(link: link));
@@ -179,7 +188,45 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
               ),
             ] else ...[
               Text(
-                'Google account: ${app.driveAccountEmail ?? 'Reconnect to sync'}',
+                'Google account: ${app.sharedAccountEmail ?? 'Reconnect to sync'}',
+              ),
+              const SizedBox(height: 8),
+              Text('Your role: ${app.sharedRole}'),
+              const SizedBox(height: 16),
+              Text(
+                'Who has access',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (app.sharedAccessBusy) const LinearProgressIndicator(),
+              if (app.sharedAccess == null)
+                const Text('Access details have not been checked yet.'),
+              if (app.sharedAccessError != null) Text(app.sharedAccessError!),
+              if (app.sharedAccess != null) ...[
+                Text(
+                  'Last checked: ${AppFormatters.dateTime(app.sharedAccess!.checkedAt)}',
+                ),
+                for (final member in app.sharedAccess!.members)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      member.role == 'owner'
+                          ? Icons.person
+                          : Icons.people_outline,
+                    ),
+                    title: Text(member.label),
+                    subtitle:
+                        member.email.isNotEmpty && member.email != member.label
+                        ? Text(member.email)
+                        : null,
+                    trailing: Text(member.roleLabel),
+                  ),
+              ],
+              TextButton.icon(
+                onPressed: app.sharedAccessBusy
+                    ? null
+                    : () => _run(app.refreshSharedAccess),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh access details'),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -197,8 +244,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                         final name = await _ask(
                           'Your display name',
                           'Name',
-                          message:
-                              'Shown on your new additions and edits. Your Google email stays in the shared history.',
+                          message: 'Shown on your new additions and edits. Your Google email stays in the shared history.',
                         );
                         if (name != null && mounted) {
                           await _run(() => app.setSharedDisplayName(name));
@@ -233,14 +279,13 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
               OutlinedButton.icon(
                 icon: const Icon(Icons.person_add_alt),
                 label: const Text('Invite editor'),
-                onPressed: disabled
+                onPressed: disabled || app.sharedAccess?.canShare == false
                     ? null
                     : () async {
                         final email = await _ask(
                           'Invite an editor',
                           'Their Google email',
-                          message:
-                              'Google will email an invitation granting editing access to this budget Sheet.',
+                          message: 'Google will email an invitation granting editing access to this budget Sheet.',
                         );
                         if (email != null && mounted) {
                           await _run(() async {
@@ -290,7 +335,9 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                           final choice = await showDialog<String>(
                             context: context,
                             builder: (context) => AlertDialog(
-                              title: const Text('Switch to personal budget?'),
+                              title: const Text(
+                                'Switch to personal budget on this phone?',
+                              ),
                               content: const Text(
                                 'Keep unsynced edits on this phone to upload later, or discard them. Your personal budget and changes already saved to the shared Sheet stay unchanged.',
                               ),
@@ -343,7 +390,7 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                           () => app.leaveSharedBudget(discardPending: discard),
                         );
                       },
-                child: const Text('Switch to personal budget'),
+                child: const Text('Switch to personal budget on this phone'),
               ),
               for (final entry in app.sharedConflicts.entries)
                 Card(
