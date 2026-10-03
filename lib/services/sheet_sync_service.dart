@@ -50,7 +50,10 @@ class SheetSyncService {
   final ledger = SheetLedger();
   final List<SheetChange> pending = [];
   final Set<String> _seenIds = {};
+  int _remoteRowCount = 0;
+  DateTime? _lastFullReadAt;
   String? _transactionsViewHash;
+  static const _fullHistoryRefreshInterval = Duration(minutes: 10);
   static const _transactionsViewColumns = [
     'ID',
     'Date',
@@ -65,6 +68,7 @@ class SheetSyncService {
   ];
   static const _activeKey = 'shared_sheet_active_v1';
   String get _stateKey => 'shared_sheet_state_v1_$sheetId';
+  String get _lastSyncedKey => 'shared_sheet_last_synced_v1_$sheetId';
   bool get active => sheetId != null;
   String get url => 'https://docs.google.com/spreadsheets/d/$sheetId/edit';
 
@@ -95,7 +99,11 @@ class SheetSyncService {
     title = data['title'] as String?;
     final email = data['accountEmail'] as String?;
     if (email != null) await setAccount(email);
-    lastSynced = DateTime.tryParse(data['lastSynced'] as String? ?? '');
+    lastSynced = DateTime.tryParse(
+      prefs.getString(_lastSyncedKey) ??
+          data['lastSynced'] as String? ??
+          '',
+    );
     pendingApplication = data['application'] == null
         ? null
         : Map<String, dynamic>.from(data['application'] as Map);
@@ -134,6 +142,20 @@ class SheetSyncService {
     }
     if (activate && !await prefs.setString(_activeKey, sheetId!)) {
       throw StateError('Could not save the shared budget selection.');
+    }
+    if (lastSynced != null) {
+      await prefs.setString(_lastSyncedKey, lastSynced!.toIso8601String());
+    }
+  }
+
+  Future<void> _persistLastSynced() async {
+    if (!active || lastSynced == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString(
+      _lastSyncedKey,
+      lastSynced!.toIso8601String(),
+    )) {
+      throw StateError('Could not save shared sync time on this phone.');
     }
   }
 
@@ -358,10 +380,20 @@ class SheetSyncService {
   }
 
   Future<List<SheetChange>> _read({bool interactive = false}) async {
+    final now = DateTime.now();
+    final fullRead =
+        interactive ||
+        _remoteRowCount == 0 ||
+        _lastFullReadAt == null ||
+        now.difference(_lastFullReadAt!) >= _fullHistoryRefreshInterval;
+    final firstRow = fullRead ? 1 : _remoteRowCount + 1;
+    final range = fullRead
+        ? 'Changes!A:O'
+        : 'Changes!A$firstRow:O';
     final response = await _request(
       'GET',
       'sheets.googleapis.com',
-      '/v4/spreadsheets/$sheetId/values/Changes!A:O',
+      '/v4/spreadsheets/$sheetId/values/$range',
       query: {
         'valueRenderOption': 'UNFORMATTED_VALUE',
         'dateTimeRenderOption': 'FORMATTED_STRING',
@@ -369,53 +401,95 @@ class SheetSyncService {
       interactive: interactive,
     );
     final rows = (jsonDecode(response.body) as Map)['values'] as List? ?? [];
-    if (rows.isEmpty ||
-        canonicalJson(rows.first) != canonicalJson(SheetChange.columns)) {
-      throw const FormatException(
-        'This is not a Budget Tracker shared Sheet, or its headers were changed.',
-      );
+
+    if (fullRead) {
+      if (rows.isEmpty ||
+          canonicalJson(rows.first) != canonicalJson(SheetChange.columns)) {
+        throw const FormatException(
+          'This is not a Budget Tracker shared Sheet, or its headers were changed.',
+        );
+      }
+    } else if (rows.isEmpty) {
+      return const [];
     }
+
     final changes = <String, SheetChange>{};
-    for (var i = 1; i < rows.length; i++) {
+    final startIndex = fullRead ? 1 : 0;
+    for (var i = startIndex; i < rows.length; i++) {
       final row = rows[i] as List;
       if (row.every((cell) => '$cell'.isEmpty)) continue;
+      final sheetRow = fullRead ? i + 1 : firstRow + i;
       try {
         final change = SheetChange.fromRow(row);
         final previous = changes[change.id];
         if (previous != null && previous.revision != change.revision) {
           throw const FormatException('Change IDs must be unique.');
         }
+        if (!fullRead &&
+            _seenIds.contains(change.id) &&
+            ledger.changes[change.revision] == null) {
+          throw const FormatException('Change IDs must be unique.');
+        }
         changes[change.id] = change;
       } catch (error) {
         throw FormatException(
-          'Fix row ${i + 1} in the shared Sheet before syncing: $error',
+          'Fix row $sheetRow in the shared Sheet before syncing: $error',
         );
       }
     }
-    if (!_seenIds.every(changes.containsKey)) {
-      throw const FormatException(
-        'Shared history rows were removed. Restore them using Sheets version history; use Deleted to remove transactions.',
-      );
+
+    if (fullRead) {
+      if (!_seenIds.every(changes.containsKey)) {
+        throw const FormatException(
+          'Shared history rows were removed. Restore them using Sheets version history; use Deleted to remove transactions.',
+        );
+      }
+      _remoteRowCount = rows.length;
+      _lastFullReadAt = now;
+    } else {
+      _remoteRowCount += rows.length;
     }
     return changes.values.toList();
   }
 
-  void _merge(List<SheetChange> remote) {
-    // Direct cell edits replace that row's cached hash. Pending app descendants
-    // still reference the old hash and therefore remain concurrent branches.
+  ({bool headsChanged, bool cacheChanged}) _merge(
+    List<SheetChange> remote,
+  ) {
+    if (remote.isEmpty) {
+      return (headsChanged: false, cacheChanged: false);
+    }
+
+    // New remote revisions can change the current shared state. Revisions that
+    // are already in the local ledger are normally acknowledgements of our
+    // own persisted outbox and do not require rewriting the local database.
+    var headsChanged = remote.any(
+      (change) => !ledger.changes.containsKey(change.revision),
+    );
+    var cacheChanged = headsChanged;
     final byId = {for (final change in remote) change.id: change};
     final pendingRevisions = pending.map((change) => change.revision).toSet();
+    final beforeChanges = ledger.changes.length;
     ledger.changes.removeWhere(
       (revision, change) =>
           byId.containsKey(change.id) &&
           byId[change.id]!.revision != revision &&
           !pendingRevisions.contains(revision),
     );
+    if (ledger.changes.length != beforeChanges) {
+      cacheChanged = true;
+      headsChanged = true;
+    }
+
     ledger.addAll(remote);
-    _seenIds.addAll(byId.keys);
+    for (final id in byId.keys) {
+      if (_seenIds.add(id)) cacheChanged = true;
+    }
+    final pendingBefore = pending.length;
     pending.removeWhere(
       (change) => byId[change.id]?.revision == change.revision,
     );
+    if (pending.length != pendingBefore) cacheChanged = true;
+    return (headsChanged: headsChanged, cacheChanged: cacheChanged);
   }
 
   Future<Set<String>> _sheetTitles({bool interactive = false}) async {
@@ -552,18 +626,27 @@ class SheetSyncService {
     bool interactive = false,
     Map<String, dynamic>? localSnapshot,
   }) async {
+    var cacheChanged = false;
+    var needsApplication = false;
+
     Future<void> checkpoint() async {
-      // Store downloaded state and its application marker together. A restart
-      // must apply this state before interpreting the older database as edits.
-      if (localSnapshot != null) {
+      if (needsApplication && localSnapshot != null) {
         pendingApplication = ledger.snapshot(localSnapshot);
+        cacheChanged = true;
       }
-      await persist();
+      if (cacheChanged) {
+        await persist();
+        cacheChanged = false;
+      }
+      needsApplication = false;
     }
 
     final remote = await _read(interactive: interactive);
-    _merge(remote);
+    final firstMerge = _merge(remote);
+    cacheChanged = cacheChanged || firstMerge.cacheChanged;
+    needsApplication = needsApplication || firstMerge.headsChanged;
     await checkpoint();
+
     if (pending.isNotEmpty) {
       // Never reuse a remotely edited row ID after an uncertain upload.
       final remoteIds = remote.map((change) => change.id).toSet();
@@ -589,10 +672,13 @@ class SheetSyncService {
       for (final old in oldPending) {
         if (rewritten.containsKey(old.revision)) {
           ledger.changes.remove(old.revision);
+          cacheChanged = true;
         }
       }
       ledger.addAll(pending);
+      if (rewritten.isNotEmpty) cacheChanged = true;
       await checkpoint();
+
       final upload = List<SheetChange>.of(pending);
       await _request(
         'POST',
@@ -601,16 +687,22 @@ class SheetSyncService {
         query: {'valueInputOption': 'RAW', 'insertDataOption': 'INSERT_ROWS'},
         body: {'values': upload.map((change) => change.toRow()).toList()},
       );
-      // Re-read before acknowledging; a timeout can mean the append succeeded.
-      _merge(await _read());
+
+      // Only read rows appended since our cursor. If the append response was
+      // lost after Google committed it, the next retry starts from the same
+      // cursor and acknowledges those rows without duplicating them.
+      final acknowledgement = _merge(await _read());
+      cacheChanged = cacheChanged || acknowledgement.cacheChanged;
+      needsApplication = needsApplication || acknowledgement.headsChanged;
       await checkpoint();
     }
+
     // Changes remains the authoritative append-only history. Transactions is
     // a readable current-state mirror so additions are immediately visible in
     // Google Sheets without decoding revision rows.
     await _publishTransactionsView(interactive: interactive);
     lastSynced = DateTime.now();
-    await persist();
+    await _persistLastSynced();
   }
 
   Future<void> invite(String email) async {
