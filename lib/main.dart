@@ -65,6 +65,7 @@ class _BudgetTrackerAppState extends State<BudgetTrackerApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.controller.setAppActive(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.controller.processRecurringTransactions());
       unawaited(widget.controller.maybeAutoBackup());

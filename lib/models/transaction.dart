@@ -4,6 +4,23 @@ enum TransactionType {
 
   String get label => this == TransactionType.expense ? 'Expense' : 'Income';
 
+  // Refunds stay expenses; income must remain positive.
+  bool acceptsAmount(double amount) =>
+      amount.isFinite &&
+      amount != 0 &&
+      (this == TransactionType.expense || amount > 0);
+
+  String? validateAmount(String? value) {
+    final amount = double.tryParse(value?.trim() ?? '');
+    if (amount == null || !acceptsAmount(amount)) {
+      return this == TransactionType.expense
+          ? 'Enter a non-zero amount. Use a negative amount for a refund.'
+          : 'Enter an amount greater than 0.';
+    }
+    if (amount.abs() > 99999999) return 'Amount is too large.';
+    return null;
+  }
+
   static TransactionType fromName(String? value) {
     return value == TransactionType.income.name
         ? TransactionType.income
@@ -38,6 +55,7 @@ class Transaction {
 
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
+  double get cashFlow => isIncome ? amount : -amount;
 
   Transaction copyWith({
     String? id,

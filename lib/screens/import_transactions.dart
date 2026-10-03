@@ -420,7 +420,8 @@ class _MappingCard extends StatelessWidget {
             ),
             const SizedBox(height: 5),
             Text(
-              'Use Signed amount for a single +/- amount column, or use '
+              'With a Type column, negative expenses are refunds. Without Type, '
+              'negative amounts are spending and positive amounts are income. Use '
               'Income amount and Expense amount when the export splits them.',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -681,9 +682,9 @@ class _PreviewTransactions extends StatelessWidget {
                     AppFormatters.date(transactions[i].date),
               ),
               trailing: Text(
-                (transactions[i].isIncome ? '+' : '-') +
+                (transactions[i].cashFlow >= 0 ? '+' : '-') +
                     AppFormatters.money(
-                      transactions[i].amount,
+                      transactions[i].amount.abs(),
                       currencyCode: currencyCode,
                     ),
                 style: const TextStyle(fontWeight: FontWeight.w900),

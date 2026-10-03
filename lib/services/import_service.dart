@@ -297,8 +297,12 @@ class ImportService {
           continue;
         }
 
-        final amountAndType = _resolveAmountAndType(row, mapping, typeText);
-        if (amountAndType == null || amountAndType.amount <= 0) {
+        final amountAndType = _resolveAmountAndType(
+          row, mapping, typeText,
+          signedCashFlow: mapping.amount != null &&
+              _normalizeHeader(table.headers[mapping.amount!]) == 'amountauto',
+        );
+        if (amountAndType == null || !amountAndType.type.acceptsAmount(amountAndType.amount)) {
           invalidCount++;
           warnings.add(
             'Row ' + (rowIndex + 2).toString() + ': amount could not be read.',
@@ -565,16 +569,17 @@ class ImportService {
   _AmountAndType? _resolveAmountAndType(
     List<String> row,
     ImportMapping mapping,
-    String typeText,
-  ) {
+    String typeText, {
+    bool signedCashFlow = false,
+  }) {
     final income = _parseAmount(_cell(row, mapping.incomeAmount));
     final expense = _parseAmount(_cell(row, mapping.expenseAmount));
 
     if (income != null && income.abs() > 0) {
-      return _AmountAndType(income.abs(), TransactionType.income);
+      return _AmountAndType(income, TransactionType.income);
     }
     if (expense != null && expense.abs() > 0) {
-      return _AmountAndType(expense.abs(), TransactionType.expense);
+      return _AmountAndType(expense, TransactionType.expense);
     }
 
     final signed = _parseAmount(_cell(row, mapping.amount));
@@ -582,7 +587,12 @@ class ImportService {
 
     final explicitType = _parseType(typeText);
     if (explicitType != null) {
-      return _AmountAndType(signed.abs(), explicitType);
+      // Paraga Amount(Auto) represents cash flow, even with a Type column.
+      // Ordinary typed Amount exports store expense amounts directly.
+      if (signedCashFlow && explicitType == TransactionType.expense) {
+        return _AmountAndType(-signed, explicitType);
+      }
+      return _AmountAndType(signed, explicitType);
     }
 
     // Money Tracker (Paraga) documents Amount(Auto) as using negative values

@@ -47,7 +47,12 @@ enum BackupFrequency {
 
 class DriveBackupService {
   static const _scope = 'https://www.googleapis.com/auth/drive.appdata';
-  static const _serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+  // OAuth client IDs are public app identifiers, not client secrets.
+  // Other deployments can supply their own ID, or an empty value to disable it.
+  static const _serverClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '360381329667-0h2jd9c82upiompn2usq2al5mtj82g79.apps.googleusercontent.com',
+  );
   static const _filePrefix = 'budget_tracker_backup_';
   static const _maxBackups = 10;
 
@@ -92,6 +97,43 @@ class DriveBackupService {
     if (!_initialized || !isConfigured) return;
     await _signIn.signOut();
     _account = null;
+  }
+
+  Future<Map<String, String>> sharedSheetHeaders({bool interactive = false}) async {
+    await initialize();
+    if (!isConfigured) throw StateError('Google sign-in is not configured.');
+    var account = _account;
+    if (account == null) {
+      final lightweight = _signIn.attemptLightweightAuthentication();
+      if (lightweight != null) account = await lightweight;
+    }
+    if (account == null && interactive) account = await _signIn.authenticate();
+    if (account == null) throw StateError('Connect Google to sync this budget.');
+    // Sheets scope allows invited users to open a shared spreadsheet by its URL.
+    // drive.file is sufficient to create and share files created by this app.
+    const scopes = [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive.file',
+    ];
+    var headers = await account.authorizationClient.authorizationHeaders(
+      scopes,
+    );
+    if (headers == null && interactive) {
+      // Sheets/drive.file are additional scopes beyond the private Drive
+      // backup scope. Request them explicitly from a user gesture, then read
+      // the cached authorization headers for subsequent background syncs.
+      await account.authorizationClient.authorizeScopes(scopes);
+      headers = await account.authorizationClient.authorizationHeaders(scopes);
+    }
+    if (headers == null) {
+      throw StateError(
+        interactive
+            ? 'Google Sheets permission was not granted. Try reconnecting.'
+            : 'Reconnect Google to resume shared budget syncing.',
+      );
+    }
+    _account = account;
+    return headers;
   }
 
   Future<DateTime> uploadSnapshot(

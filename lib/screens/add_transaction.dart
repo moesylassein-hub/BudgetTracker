@@ -364,24 +364,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(
-                    RegExp('^\\d{0,8}([.]\\d{0,${currency.decimalDigits}})?'),
+                    RegExp('^-?\\d{0,8}([.]\\d{0,${currency.decimalDigits}})?'),
                   ),
                 ],
                 decoration: InputDecoration(
                   labelText: 'Amount',
+                  helperText: isExpense ? 'Use a negative amount for a refund or reimbursement.' : null,
                   hintText: '0.00',
                   suffixText: currency.code,
                   prefixIcon: const Icon(Icons.payments_rounded),
                 ),
-                validator: (value) {
-                  final amount = double.tryParse(value?.trim() ?? '');
-                  if (amount == null || amount <= 0) return 'Enter a valid amount.';
-                  if (amount > 99999999) return 'Amount is too large.';
-                  return null;
-                },
+                validator: _type.validateAmount,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(

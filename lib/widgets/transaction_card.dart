@@ -8,6 +8,7 @@ class TransactionCard extends StatelessWidget {
   final Transaction transaction;
   final String currencyCode;
   final String? iconKey;
+  final String? authorship;
   final VoidCallback? onTap;
 
   const TransactionCard({
@@ -15,6 +16,7 @@ class TransactionCard extends StatelessWidget {
     required this.transaction,
     required this.currencyCode,
     this.iconKey,
+    this.authorship,
     this.onTap,
   });
 
@@ -61,17 +63,27 @@ class TransactionCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       '${transaction.category} • ${AppFormatters.shortDate(transaction.date)}',
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
+                    if (authorship != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        authorship!,
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 10),
               Text(
-                '${transaction.isIncome ? '+' : '-'}${AppFormatters.money(transaction.amount, currencyCode: displayCurrency)}',
+                '${transaction.cashFlow >= 0 ? '+' : '-'}${AppFormatters.money(transaction.amount.abs(), currencyCode: displayCurrency)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  color: transaction.isIncome ? scheme.tertiary : null,
+                  color: transaction.cashFlow > 0 ? scheme.tertiary : null,
                 ),
               ),
             ],

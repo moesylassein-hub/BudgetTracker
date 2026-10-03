@@ -1,6 +1,6 @@
 # Privacy Policy — Budget Tracker
 
-**Effective date:** August 21, 2026
+**Effective date:** October 2, 2026
 
 Budget Tracker is designed as a local-first personal finance utility. This policy explains how the app handles information.
 
@@ -26,9 +26,17 @@ Google Drive backup is optional and disabled until you connect a Google account.
 
 Automatic backup can be set to Off, Daily, Weekly, or Monthly. Automatic backups run while the app is active and only when local data has changed. You can also start a backup manually or restore the latest available backup from Settings.
 
+## Shared budgets
+
+Creating a shared budget uploads a copy of its transactions, categories, budgets, savings goals and recurring rules to a visible Google Sheet in the connected account's Drive. Joining an existing shared budget downloads that Sheet's data into a separate local workspace. Each participant authenticates with their own Google account. Only people with Google sharing access can access the Sheet; editor invitations grant editing permission and Google sends an invitation email.
+
+Sync sends additions, edits and deletion records directly to Google Sheets. Change history includes the editor's Google email and retains prior versions, including deleted entries. Offline edits are cached locally and uploaded when syncing succeeds. Theme, notification preferences and backup schedules remain local. The app requests Google Sheets permission to open invited Sheets by URL, plus per-file Drive access for creating and sharing app-created Sheets. It only operates on the Sheet explicitly selected in the app.
+
+The owner can revoke access using Google sharing settings or delete the spreadsheet. Revoking access prevents future sync; it does not erase data that another participant already downloaded, exported or backed up. Shared deletion records do not erase historical rows. To remove the complete shared history, the owner must delete the Sheet in Drive and participants must remove their local app data and any exports/backups separately.
+
 ## Internet, accounts, analytics, and advertising
 
-The production Android manifest requests Internet access for the optional Google Drive backup feature. Google sign-in is used only when you explicitly connect Drive backup. Budget Tracker does not include advertising or analytics SDKs and does not send budgeting data to an app-operated server.
+The production Android manifest requests Internet access for optional Google Drive backups and shared Google Sheets budgets. Google sign-in is used when you explicitly connect either feature. Budget Tracker does not include advertising or analytics SDKs and does not send budgeting data to an app-operated server.
 
 ## Data sharing
 
@@ -51,3 +59,9 @@ If the app's data practices change, this privacy policy should be updated before
 Before publishing this policy, replace this section with a real support email address that users can contact with privacy questions.
 
 **Support email:** `REPLACE_WITH_YOUR_SUPPORT_EMAIL`
+
+Shared budgets also store an optional display name alongside the editor email in new change-history entries. These names are visible to other editors and remain in previous revisions when the name changes.
+
+Budget details reads and caches the selected Sheet owners and access grants that Google permits the signed-in account to view, including names, emails, group/domain/link access and roles. The app does not expand group membership or read sharing information for unrelated Drive files.
+
+Shared-budget shortcuts store the Sheet ID, budget name, and last-used Google account email locally on your phone. Removing a shortcut does not delete the Google Sheet or its local pending-edit cache.
