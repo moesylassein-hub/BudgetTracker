@@ -49,19 +49,40 @@ SheetChange change(
 
 class SheetServer {
   final List<List<dynamic>> rows = [List.of(SheetChange.columns)];
+  final List<List<dynamic>> transactionRows = [];
+  final Set<String> sheetTitles = {'Changes', 'Read me'};
   bool offline = false;
   bool denied = false;
   bool loseAppendResponse = false;
   Map<String, dynamic>? permission;
   int appends = 0;
+
   http.Client client() => MockClient((request) async {
     if (offline) throw const SocketException('offline');
     if (denied) return http.Response('{}', 403);
     expect(request.headers['authorization'], 'Bearer test');
+
+    if (request.method == 'POST' &&
+        request.url.path == '/v4/spreadsheets') {
+      final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      final sheets = body['sheets'] as List? ?? const [];
+      for (final raw in sheets.whereType<Map>()) {
+        final properties = raw['properties'];
+        if (properties is Map && properties['title'] != null) {
+          sheetTitles.add(properties['title'].toString());
+        }
+      }
+      return http.Response(
+        jsonEncode({'spreadsheetId': sheetId}),
+        200,
+      );
+    }
+
     if (request.url.path.endsWith('/permissions')) {
       permission = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
       return http.Response('{}', 200);
     }
+
     if (request.url.path.endsWith(':append')) {
       expect(request.url.queryParameters['valueInputOption'], 'RAW');
       expect(request.url.queryParameters['insertDataOption'], 'INSERT_ROWS');
@@ -75,12 +96,67 @@ class SheetServer {
       }
       return http.Response('{}', 200);
     }
-    if (request.url.path.contains('/values/')) {
+
+    if (request.url.path.endsWith('/values:batchClear')) {
+      final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      final ranges = (body['ranges'] as List? ?? const []).cast<String>();
+      if (ranges.any((range) => range.startsWith('Transactions!'))) {
+        transactionRows.clear();
+      }
+      return http.Response('{}', 200);
+    }
+
+    if (request.url.path.endsWith('/values:batchUpdate')) {
+      final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      for (final raw in (body['data'] as List? ?? const []).whereType<Map>()) {
+        final range = raw['range']?.toString() ?? '';
+        final values = (raw['values'] as List? ?? const [])
+            .map((row) => List<dynamic>.from(row as List))
+            .toList();
+        if (range.startsWith('Transactions!')) {
+          transactionRows
+            ..clear()
+            ..addAll(values);
+        } else if (range.startsWith('Changes!') && values.isNotEmpty) {
+          rows
+            ..clear()
+            ..addAll(values);
+        }
+      }
+      return http.Response('{}', 200);
+    }
+
+    if (request.method == 'POST' &&
+        request.url.path.endsWith(':batchUpdate')) {
+      final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      for (final raw in (body['requests'] as List? ?? const []).whereType<Map>()) {
+        final addSheet = raw['addSheet'];
+        if (addSheet is Map) {
+          final properties = addSheet['properties'];
+          if (properties is Map && properties['title'] != null) {
+            sheetTitles.add(properties['title'].toString());
+          }
+        }
+      }
+      return http.Response('{}', 200);
+    }
+
+    if (request.url.path.contains('/values/Changes!')) {
       return http.Response(jsonEncode({'values': rows}), 200);
     }
+    if (request.url.path.contains('/values/Transactions!')) {
+      return http.Response(jsonEncode({'values': transactionRows}), 200);
+    }
+
     return http.Response(
       jsonEncode({
         'properties': {'title': 'Family'},
+        'sheets': [
+          for (final title in sheetTitles)
+            {
+              'properties': {'title': title},
+            },
+        ],
       }),
       200,
     );
@@ -607,6 +683,13 @@ void main() {
       expect(
         server.rows.where(
           (row) => row.length > 1 && row[1] == 'transaction:new',
+        ),
+        isNotEmpty,
+      );
+      expect(server.sheetTitles, contains('Transactions'));
+      expect(
+        server.transactionRows.where(
+          (row) => row.isNotEmpty && row[0] == 'new',
         ),
         isNotEmpty,
       );
