@@ -115,11 +115,23 @@ class DriveBackupService {
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive.file',
     ];
-    final headers = await account.authorizationClient.authorizationHeaders(
+    var headers = await account.authorizationClient.authorizationHeaders(
       scopes,
-      promptIfNecessary: interactive,
     );
-    if (headers == null) throw StateError('Reconnect Google to allow shared budgets.');
+    if (headers == null && interactive) {
+      // Sheets/drive.file are additional scopes beyond the private Drive
+      // backup scope. Request them explicitly from a user gesture, then read
+      // the cached authorization headers for subsequent background syncs.
+      await account.authorizationClient.authorizeScopes(scopes);
+      headers = await account.authorizationClient.authorizationHeaders(scopes);
+    }
+    if (headers == null) {
+      throw StateError(
+        interactive
+            ? 'Google Sheets permission was not granted. Try reconnecting.'
+            : 'Reconnect Google to resume shared budget syncing.',
+      );
+    }
     _account = account;
     return headers;
   }
