@@ -61,6 +61,7 @@ class SheetSyncService {
   final List<SheetChange> pending = [];
   final Set<String> _seenIds = {};
   int _remoteRowCount = 0;
+  String? _remoteAnchorId;
   DateTime? _lastFullReadAt;
   String? _transactionsViewHash;
   bool _mirrorNeedsRefresh = true;
@@ -390,14 +391,19 @@ class SheetSyncService {
     await persist();
   }
 
-  Future<_HistoryBatch> _read({bool interactive = false}) async {
+  Future<_HistoryBatch> _read({
+    bool interactive = false,
+    bool forceFull = false,
+  }) async {
     final now = DateTime.now();
     final fullRead =
         interactive ||
-        _remoteRowCount == 0 ||
+        forceFull ||
+        _remoteRowCount <= 1 ||
         _lastFullReadAt == null ||
         now.difference(_lastFullReadAt!) >= _fullHistoryRefreshInterval;
-    final firstRow = fullRead ? 1 : _remoteRowCount + 1;
+    // Overlap the last known row: a range beyond the grid can be rejected.
+    final firstRow = fullRead ? 1 : _remoteRowCount;
     final range = fullRead ? 'Changes!A:O' : 'Changes!A$firstRow:O';
     final response = await _request(
       'GET',
@@ -418,8 +424,11 @@ class SheetSyncService {
           'This is not a Budget Tracker shared Sheet, or its headers were changed.',
         );
       }
-    } else if (rows.isEmpty) {
-      return _HistoryBatch(const [], _remoteRowCount, null);
+    } else if (rows.isEmpty ||
+        (rows.first as List).isEmpty ||
+        '${(rows.first as List).first}' != _remoteAnchorId) {
+      // A shifted checkpoint requires a full integrity check before applying data.
+      return _read(interactive: interactive, forceFull: true);
     }
 
     final changes = <String, SheetChange>{};
@@ -435,6 +444,7 @@ class SheetSyncService {
           throw const FormatException('Change IDs must be unique.');
         }
         if (!fullRead &&
+            i > 0 &&
             _seenIds.contains(change.id) &&
             ledger.changes[change.revision] == null) {
           throw const FormatException('Change IDs must be unique.');
@@ -456,7 +466,7 @@ class SheetSyncService {
     }
     return _HistoryBatch(
       changes.values.toList(),
-      fullRead ? rows.length : _remoteRowCount + rows.length,
+      fullRead ? rows.length : firstRow - 1 + rows.length,
       fullRead ? now : null,
     );
   }
@@ -465,6 +475,7 @@ class SheetSyncService {
     final remote = batch.changes;
     void commitCursor() {
       _remoteRowCount = batch.rowCount;
+      _remoteAnchorId = remote.isEmpty ? null : remote.last.id;
       if (batch.fullReadAt != null) {
         _lastFullReadAt = batch.fullReadAt;
         _mirrorNeedsRefresh = true;
@@ -808,7 +819,7 @@ class SheetSyncService {
             query: {
               'pageSize': '100',
               'fields': 'nextPageToken,permissions(id,type,role,displayName,emailAddress,domain,allowFileDiscovery,deleted,expirationTime)',
-              if (token != null) 'pageToken': token,
+              'pageToken': ?token,
             },
           );
           final page = jsonDecode(response.body) as Map;

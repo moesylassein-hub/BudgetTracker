@@ -60,6 +60,7 @@ class SheetServer {
   int appends = 0;
   int mirrorWrites = 0;
   int gridRows = 1000;
+  int historyGridRows = 1000;
   bool failMirror = false;
   bool hidePermissions = false;
   final List<String?> permissionPages = [];
@@ -132,6 +133,7 @@ class SheetServer {
       rows.addAll(
         ((jsonDecode(request.body) as Map)['values'] as List).cast<List>(),
       );
+      if (rows.length > historyGridRows) historyGridRows = rows.length;
       appends++;
       if (loseAppendResponse) {
         loseAppendResponse = false;
@@ -174,12 +176,14 @@ class SheetServer {
       final operations = (body['requests'] as List? ?? const [])
           .whereType<Map>()
           .toList();
-      if (failMirror && operations.any((raw) => raw['updateCells'] != null))
+      if (failMirror && operations.any((raw) => raw['updateCells'] != null)) {
         return http.Response('{}', 500);
+      }
       for (final raw in operations) {
         final append = raw['appendDimension'];
-        if (append is Map && append['dimension'] == 'ROWS')
+        if (append is Map && append['dimension'] == 'ROWS') {
           gridRows += append['length'] as int;
+        }
         final update = raw['updateCells'];
         if (update is Map) {
           expect(update['fields'], 'userEnteredValue');
@@ -221,6 +225,9 @@ class SheetServer {
         return http.Response(jsonEncode({'values': rows}), 200);
       }
       final startRow = int.parse(match.group(1)!);
+      if (startRow > historyGridRows) {
+        return http.Response('Range exceeds grid limits', 400);
+      }
       final startIndex = (startRow - 1).clamp(0, rows.length);
       return http.Response(
         jsonEncode({'values': rows.skip(startIndex).toList()}),
@@ -850,38 +857,66 @@ void main() {
     },
   );
 
+  test('long-running sync reads a checkpoint and new history rows', () async {
+    final server = SheetServer();
+    for (var i = 0; i < 400; i++) {
+      server.rows.add(
+        change(
+          'seed-$i',
+          item('seed-$i', i + 1),
+          entity: 'transaction:seed-$i',
+        ).toRow(),
+      );
+    }
+
+    final phone = server.phone('one@example.com');
+    addTearDown(phone.dispose);
+    await phone.sync(interactive: true);
+    expect(server.changeReadRanges.last, 'Changes!A:O');
+
+    server.changeReadRanges.clear();
+    await phone.sync();
+    expect(server.changeReadRanges, ['Changes!A401:O']);
+
+    server.rows.add(
+      change('late', item('late', -75), entity: 'transaction:late').toRow(),
+    );
+    await phone.sync();
+    expect(server.changeReadRanges.last, 'Changes!A401:O');
+    expect(phone.ledger.entities['transaction:late']!['amount'], -75);
+
+    await phone.sync();
+    expect(server.changeReadRanges.last, 'Changes!A402:O');
+  });
+
+  test('polling at the grid boundary keeps working without new rows', () async {
+    final server = SheetServer();
+    server.rows.add(change('seed', item('travel', 100)).toRow());
+    server.historyGridRows = server.rows.length;
+    final phone = server.phone('one@example.com');
+    addTearDown(phone.dispose);
+    await phone.sync();
+    await phone.finishApplication();
+    await phone.sync();
+    expect(server.changeReadRanges.last, 'Changes!A2:O');
+    expect(phone.pendingApplication, isNull);
+    expect(phone.ledger.entities['transaction:travel']!['amount'], 100);
+  });
+
   test(
-    'long-running sync reads only new history rows between integrity refreshes',
+    'shifted checkpoint detects removed history even with replacement rows',
     () async {
       final server = SheetServer();
-      for (var i = 0; i < 400; i++) {
-        server.rows.add(
-          change(
-            'seed-$i',
-            item('seed-$i', i + 1),
-            entity: 'transaction:seed-$i',
-          ).toRow(),
-        );
-      }
-
+      server.rows.add(change('seed', item('travel', 100)).toRow());
       final phone = server.phone('one@example.com');
       addTearDown(phone.dispose);
-      await phone.sync(interactive: true);
+      await phone.sync();
+      await phone.finishApplication();
+      server.rows[1] = change('replacement', item('travel', 900)).toRow();
+      await expectLater(phone.sync(), throwsFormatException);
       expect(server.changeReadRanges.last, 'Changes!A:O');
-
-      server.changeReadRanges.clear();
-      await phone.sync();
-      expect(server.changeReadRanges, ['Changes!A402:O']);
-
-      server.rows.add(
-        change('late', item('late', -75), entity: 'transaction:late').toRow(),
-      );
-      await phone.sync();
-      expect(server.changeReadRanges.last, 'Changes!A402:O');
-      expect(phone.ledger.entities['transaction:late']!['amount'], -75);
-
-      await phone.sync();
-      expect(server.changeReadRanges.last, 'Changes!A403:O');
+      expect(phone.ledger.entities['transaction:travel']!['amount'], 100);
+      expect(phone.pendingApplication, isNull);
     },
   );
 
