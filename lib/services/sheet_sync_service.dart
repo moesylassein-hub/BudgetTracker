@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/sheet_change.dart';
 import '../models/budget_access.dart';
+import '../models/saved_shared_budget.dart';
 
 typedef SheetHeaders = Future<Map<String, String>> Function({bool interactive});
 
@@ -79,6 +80,66 @@ class SheetSyncService {
     'Currency',
   ];
   static const _activeKey = 'shared_sheet_active_v1';
+  static const _savedKey = 'shared_sheet_saved_v1';
+
+  static Future<List<SavedSharedBudget>> savedBudgets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final result = <SavedSharedBudget>[];
+    try {
+      final data = jsonDecode(prefs.getString(_savedKey) ?? '[]') as List;
+      for (final raw in data) {
+        try {
+          final entry = raw as Map;
+          final id = parseId(entry['sheetId'] as String);
+          if (result.any((budget) => budget.sheetId == id)) continue;
+          result.add(
+            SavedSharedBudget(
+              sheetId: id,
+              name: entry['name'] as String? ?? 'Shared budget',
+              accountEmail: entry['accountEmail'] as String?,
+            ),
+          );
+        } catch (_) {
+          // A malformed bookmark must not prevent opening personal data.
+        }
+      }
+    } catch (_) {
+      // Bookmarks are separate from the financial cache and selection.
+    }
+    return result;
+  }
+
+  Future<void> rememberBudget() async {
+    if (!active) return;
+    final saved = await savedBudgets();
+    saved.removeWhere((budget) => budget.sheetId == sheetId);
+    saved.insert(
+      0,
+      SavedSharedBudget(
+        sheetId: sheetId!,
+        name: title?.trim().isNotEmpty == true ? title! : 'Shared budget',
+        accountEmail: accountEmail,
+      ),
+    );
+    await _saveBudgets(saved);
+  }
+
+  static Future<void> forgetBudget(String id) async {
+    final saved = await savedBudgets();
+    saved.removeWhere((budget) => budget.sheetId == id);
+    await _saveBudgets(saved);
+  }
+
+  static Future<void> _saveBudgets(List<SavedSharedBudget> saved) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString(
+      _savedKey,
+      jsonEncode(saved.map((budget) => budget.toJson()).toList()),
+    )) {
+      throw StateError('Could not save budget links on this phone.');
+    }
+  }
+
   String get _stateKey => 'shared_sheet_state_v1_$sheetId';
   String get _lastSyncedKey => 'shared_sheet_last_synced_v1_$sheetId';
   bool get active => sheetId != null;
@@ -156,6 +217,7 @@ class SheetSyncService {
     if (!saved) {
       throw StateError('Could not save pending shared changes on this phone.');
     }
+    if (activate) await rememberBudget();
     if (activate && !await prefs.setString(_activeKey, sheetId!)) {
       throw StateError('Could not save the shared budget selection.');
     }
@@ -181,6 +243,7 @@ class SheetSyncService {
   }
 
   Future<void> leave() async {
+    await rememberBudget();
     // Detach locally even if access was revoked. Keep the outbox for rejoining.
     await persist();
     final prefs = await SharedPreferences.getInstance();

@@ -10,6 +10,7 @@ import '../models/savings_goal.dart';
 import '../models/transaction.dart';
 import '../models/sheet_change.dart';
 import '../models/budget_access.dart';
+import '../models/saved_shared_budget.dart';
 import '../services/drive_backup_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/notification_service.dart';
@@ -29,6 +30,13 @@ class AppController extends ChangeNotifier {
       : _storage = storage, _personalStorage = storage;
 
   SheetSyncService? _shared;
+  List<SavedSharedBudget> _savedSharedBudgets = [];
+  List<SavedSharedBudget> get savedSharedBudgets => List.unmodifiable(_savedSharedBudgets);
+  Future<void> forgetSharedBudget(String id) => _serial(() async {
+    await SheetSyncService.forgetBudget(id);
+    _savedSharedBudgets = await SheetSyncService.savedBudgets();
+    notifyListeners();
+  });
   Timer? _syncTimer;
   bool _syncBusy = false;
   bool _disposed = false;
@@ -117,6 +125,7 @@ class AppController extends ChangeNotifier {
     try {
       await service.restore();
       if (service.active) {
+        await service.rememberBudget();
         _shared = service;
         _storage = _workspaceStorage(service.sheetId!);
       } else {
@@ -126,6 +135,7 @@ class AppController extends ChangeNotifier {
       service.dispose();
       _syncError = 'Could not open the shared budget: $error';
     }
+    _savedSharedBudgets = await SheetSyncService.savedBudgets();
   }
 
   Future<void> openSharedBudget({String? link, String? name}) => _serial(() async {
@@ -145,6 +155,7 @@ class AppController extends ChangeNotifier {
       await storage.restoreFinancialSnapshot(snapshot);
       await service.finishApplication();
       await service.persist(activate: true);
+      _savedSharedBudgets = await SheetSyncService.savedBudgets();
       _storage = storage;
       _shared = service;
       _syncError = null;
@@ -167,6 +178,7 @@ class AppController extends ChangeNotifier {
       await _applySharedSnapshot();
     }
     await service.leave();
+    _savedSharedBudgets = await SheetSyncService.savedBudgets();
     _syncTimer?.cancel();
     _shared = null;
     service.dispose();

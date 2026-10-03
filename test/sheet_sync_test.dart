@@ -58,6 +58,7 @@ class SheetServer {
   bool loseAppendResponse = false;
   Map<String, dynamic>? permission;
   int appends = 0;
+  int sheetCreates = 0;
   int mirrorWrites = 0;
   int gridRows = 1000;
   int historyGridRows = 1000;
@@ -85,6 +86,7 @@ class SheetServer {
     expect(request.headers['authorization'], 'Bearer test');
 
     if (request.method == 'POST' && request.url.path == '/v4/spreadsheets') {
+      sheetCreates++;
       final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
       final sheets = body['sheets'] as List? ?? const [];
       for (final raw in sheets.whereType<Map>()) {
@@ -264,6 +266,15 @@ class SheetServer {
         )
         ..sheetId = sheetId
         ..accountEmail = email;
+}
+
+class TestDriveBackup extends DriveBackupService {
+  @override
+  String get accountEmail => 'one@example.com';
+  @override
+  Future<Map<String, String>> sharedSheetHeaders({
+    bool interactive = false,
+  }) async => {'authorization': 'Bearer test'};
 }
 
 class WorkspaceStorage extends LocalStorageService {
@@ -856,6 +867,94 @@ void main() {
       expect(again.pendingApplication, isNull);
     },
   );
+
+  test('saved links retain unique budgets in last-used order and forget only the link', () async {
+    final server = SheetServer();
+    final first = server.phone('one@example.com')..title = 'Family';
+    final second = server.phone('two@example.com')
+      ..sheetId = 'another_budget_sheet_1234567890'
+      ..title = 'Travel';
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    await first.record(snapshot([item('pending', -75)]));
+    await first.persist(activate: true);
+    await second.persist(activate: true);
+    await first.leave();
+    var saved = await SheetSyncService.savedBudgets();
+    expect(saved.map((budget) => budget.name), ['Family', 'Travel']);
+    expect(saved.first.accountEmail, 'one@example.com');
+    await SheetSyncService.forgetBudget(sheetId);
+    saved = await SheetSyncService.savedBudgets();
+    expect(saved.single.sheetId, second.sheetId);
+    final restored = server.phone('one@example.com');
+    addTearDown(restored.dispose);
+    await restored.restore(sheet: sheetId);
+    expect(restored.pending, isNotEmpty);
+    expect(restored.ledger.entities['transaction:pending']!['amount'], -75);
+  });
+
+  test('old active selections are remembered without network access', () async {
+    final server = SheetServer();
+    final phone = server.phone('one@example.com')..title = 'Old family';
+    addTearDown(phone.dispose);
+    await phone.record(snapshot([item('travel', 100)]));
+    await phone.persist(activate: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('shared_sheet_saved_v1');
+    server.offline = true;
+    final app = await AppController.create(
+      WorkspaceStorage([item('personal', 500)]),
+      NotificationService(),
+      TestDriveBackup(),
+      workspaceStorage: (_) =>
+          WorkspaceStorage([item('travel', 100)], workspaceId: sheetId),
+      sharedServiceFactory: () => server.phone('one@example.com'),
+    );
+    addTearDown(app.dispose);
+    app.setAppActive(false);
+    expect(app.savedSharedBudgets.single.name, 'Old family');
+    await app.leaveSharedBudget();
+    expect(app.savedSharedBudgets.single.sheetId, sheetId);
+    expect(app.transactions.single.id, 'personal');
+  });
+
+  test('saved budget reopening checks access and retries the cached outbox without creating Sheets', () async {
+    final server = SheetServer();
+    final seed = server.phone('one@example.com')..title = 'Family';
+    addTearDown(seed.dispose);
+    await seed.record(snapshot([item('travel', 100)]));
+    await seed.sync();
+    await seed.record(snapshot([item('travel', -75)]));
+    await seed.persist(activate: true);
+    await seed.leave();
+    final personal = WorkspaceStorage([item('personal', 500)]);
+    final shared = WorkspaceStorage([
+      item('travel', -75),
+    ], workspaceId: sheetId);
+    final app = await AppController.create(
+      personal,
+      NotificationService(),
+      TestDriveBackup(),
+      workspaceStorage: (_) => shared,
+      sharedServiceFactory: () => server.phone('one@example.com'),
+    );
+    addTearDown(app.dispose);
+    app.setAppActive(false);
+    final savedId = app.savedSharedBudgets.single.sheetId;
+    server.denied = true;
+    await expectLater(app.openSharedBudget(link: savedId), throwsStateError);
+    expect(app.sharedBudgetActive, isFalse);
+    expect(app.transactions.single.id, 'personal');
+    expect(app.savedSharedBudgets.single.sheetId, savedId);
+    server.denied = false;
+    await app.openSharedBudget(link: savedId);
+    expect(app.sharedBudgetId, savedId);
+    expect(app.sharedPendingCount, 0);
+    expect(app.transactions.single.amount, -75);
+    expect(personal.items.single.amount, 500);
+    expect(server.sheetCreates, 0);
+    expect(app.savedSharedBudgets, hasLength(1));
+  });
 
   test('long-running sync reads a checkpoint and new history rows', () async {
     final server = SheetServer();

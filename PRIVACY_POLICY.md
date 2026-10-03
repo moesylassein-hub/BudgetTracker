@@ -63,3 +63,5 @@ Before publishing this policy, replace this section with a real support email ad
 Shared budgets also store an optional display name alongside the editor email in new change-history entries. These names are visible to other editors and remain in previous revisions when the name changes.
 
 Budget details reads and caches the selected Sheet owners and access grants that Google permits the signed-in account to view, including names, emails, group/domain/link access and roles. The app does not expand group membership or read sharing information for unrelated Drive files.
+
+Shared-budget shortcuts store the Sheet ID, budget name, and last-used Google account email locally on your phone. Removing a shortcut does not delete the Google Sheet or its local pending-edit cache.

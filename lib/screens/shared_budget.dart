@@ -153,6 +153,67 @@ class _SharedBudgetScreenState extends State<SharedBudgetScreen> {
                 'Your role: Owner on this phone.\nOnly you can access this local budget through the app on this phone. Google Drive backup is separate from sharing.\n\nSwitch to a synced budget by creating a Google Sheet or joining one shared with your Google account.',
               ),
               const SizedBox(height: 20),
+              if (app.savedSharedBudgets.isNotEmpty) ...[
+                Text(
+                  'Saved shared budgets',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Text(
+                  'Most recently used first. Reopening checks access with your connected Google account.',
+                ),
+                for (final budget in app.savedSharedBudgets)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            budget.name,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          if (budget.accountEmail != null)
+                            Text('Last used with: ${budget.accountEmail}'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  icon: const Icon(Icons.history),
+                                  label: Text(
+                                    budget == app.savedSharedBudgets.first
+                                        ? 'Return to last shared budget'
+                                        : 'Open budget',
+                                  ),
+                                  onPressed: disabled
+                                      ? null
+                                      : () => _run(
+                                          () => app.openSharedBudget(
+                                            link: budget.sheetId,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Remove saved link',
+                                icon: const Icon(
+                                  Icons.bookmark_remove_outlined,
+                                ),
+                                onPressed: disabled
+                                    ? null
+                                    : () => _run(
+                                        () => app.forgetSharedBudget(
+                                          budget.sheetId,
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 20),
+              ],
               FilledButton.icon(
                 icon: const Icon(Icons.add),
                 label: const Text('Create shared budget'),
