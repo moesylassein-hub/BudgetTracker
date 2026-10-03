@@ -184,8 +184,15 @@ class AppController extends ChangeNotifier {
         await service.setAccount(_driveBackup.accountEmail!);
       }
       await service.record(_backupSnapshot());
-      await service.sync(interactive: interactive, localSnapshot: _backupSnapshot());
-      await _applySharedSnapshot();
+      await service.sync(
+        interactive: interactive,
+        localSnapshot: _backupSnapshot(),
+      );
+      // A no-op poll must not rewrite the whole shared workspace every
+      // 30 seconds. Only apply when sync downloaded a materially newer state.
+      if (service.pendingApplication != null) {
+        await _applySharedSnapshot();
+      }
       await _processRecurringTransactions();
     } catch (error) {
       _syncError = 'Sync paused: $error';
