@@ -570,6 +570,51 @@ void main() {
   );
 
   test(
+    'active shared budget automatically uploads a newly added transaction',
+    () async {
+      final server = SheetServer();
+      final seed = server.phone('one@example.com');
+      addTearDown(seed.dispose);
+      await seed.record(snapshot([item('travel', 1000)]));
+      await seed.sync();
+      await seed.persist(activate: true);
+
+      final personal = WorkspaceStorage([item('personal', 500)]);
+      final shared = WorkspaceStorage([
+        item('travel', 1000),
+      ], workspaceId: sheetId);
+      await shared.saveBudgetCycleStartDay(25);
+
+      final app = await AppController.create(
+        personal,
+        NotificationService(),
+        DriveBackupService(),
+        workspaceStorage: (_) => shared,
+        sharedServiceFactory: () => server.phone('one@example.com'),
+      );
+      addTearDown(app.dispose);
+
+      await app.addTransaction(item('new', 250));
+
+      for (var i = 0; i < 100; i++) {
+        final uploaded = server.rows.any(
+          (row) => row.length > 1 && row[1] == 'transaction:new',
+        );
+        if (uploaded) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      expect(
+        server.rows.where(
+          (row) => row.length > 1 && row[1] == 'transaction:new',
+        ),
+        isNotEmpty,
+      );
+      expect(app.sharedSyncError, isNull);
+    },
+  );
+
+  test(
     'app applies shared data, preserves stale editor changes and returns to personal data',
     () async {
       final server = SheetServer();
