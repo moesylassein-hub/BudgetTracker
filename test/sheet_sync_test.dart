@@ -936,7 +936,8 @@ void main() {
       NotificationService(),
       TestDriveBackup(),
       workspaceStorage: (_) => shared,
-      sharedServiceFactory: () => server.phone('one@example.com'),
+      sharedServiceFactory: () =>
+          server.phone('one@example.com')..sheetId = null,
     );
     addTearDown(app.dispose);
     app.setAppActive(false);
